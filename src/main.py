@@ -5,6 +5,7 @@ from src.utils.config import settings
 from src.bot.handlers import router
 from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db, get_active_agreements, save_agreement
 from src.services.ai import analyze_daily_logs
+from src.utils.text import escape
 from datetime import datetime, timezone, timedelta, time
 import logging
 
@@ -75,31 +76,34 @@ async def perform_chat_analysis(chat_id: str):
         offenders = result.get('offenders', [])
         
         if not offenders:
-            text = "✨ *ИТОГИ ДНЯ* ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
+            text = "✨ <b>ИТОГИ ДНЯ</b> ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
         else:
-            text = "🚨 *ИТОГИ ДНЯ* 🚨\n\n"
+            text = "🚨 <b>ИТОГИ ДНЯ</b> 🚨\n\n"
             i = 1
             for off in offenders:
                 quote = off.get('quote')
-                username = off.get('username', 'Аноним')
+                username = escape(off.get('username', 'Аноним'))
                 user_id = off.get('user_id')
+                title = escape(off.get('title', '-'))
+                reason = escape(off.get('reason', '-'))
+                
                 if user_id:
-                    text += f"{i}. 👤 [{username}](tg://user?id={user_id}) (+{off.get('points', 0)} pts)\n"
+                    text += f"{i}. 👤 <a href='tg://user?id={user_id}'>{username}</a> (+{off.get('points', 0)} pts)\n"
                 else:
-                    text += f"{i}. 👤 *{username}* (+{off.get('points', 0)} pts)\n"
-                text += f"   🏆 *Малява по этапу:* {off.get('title', '-')}\n"
-                text += f"   📝 *Вердикт:* {off.get('reason', '-')}\n"
+                    text += f"{i}. 👤 <b>{username}</b> (+{off.get('points', 0)} pts)\n"
+                text += f"   🏆 <b>Малява по этапу:</b> {title}\n"
+                text += f"   📝 <b>Вердикт:</b> {reason}\n"
                 if quote:
-                    text += f"   💬 _{quote}_\n"
+                    text += f"   💬 <i>{escape(quote)}</i>\n"
                 text += "\n"
                 i += 1
         
         if new_agreements:
-            text += "\n🤝 *Новые договоренности:*\n"
+            text += "\n🤝 <b>Новые договоренности:</b>\n"
             for ag in new_agreements:
-                 text += f"📌 {ag.get('text')}\n"
+                 text += f"📌 {escape(ag.get('text'))}\n"
                  
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
         
     return {"status": "analyzed", "result": result}
 
@@ -146,8 +150,8 @@ async def scheduled_weekly_decay():
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="🧹 *Еженедельная Амнистия!*\n\nОчки всех моргунчиков поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
-                    parse_mode="Markdown"
+                    text="🧹 <b>Еженедельная Амнистия!</b>\n\nОчки всех моргунчиков поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
+                    parse_mode="HTML"
                 )
             except Exception as e:
                 logging.error(f"Failed to send decay announcement to {chat_id}: {e}")
@@ -234,8 +238,8 @@ async def weekly_decay(request: Request, x_secret_token: str = Header(None, alia
     
     await bot.send_message(
         chat_id=chat_id,
-        text="🧹 *Еженедельная Амнистия!*\n\nОчки всех мастюганов поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
-        parse_mode="Markdown"
+        text="🧹 <b>Еженедельная Амнистия!</b>\n\nОчки всех мастюганов поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
+        parse_mode="HTML"
     )
     
     return {"status": "decayed"}

@@ -3,6 +3,7 @@ from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id
 from ..services.ai import validate_report
+from ..utils.text import escape
 from datetime import datetime, timezone
 import logging
 
@@ -42,23 +43,25 @@ async def cmd_stats(message: types.Message):
     # Take top 10
     top_stats = stats_list[:10]
     
-    text = f"🏆 *Топ Снитчей (Сезон {current_season}):*\n\n"
+    text = f"🏆 <b>Топ Снитчей (Сезон {current_season}):</b>\n\n"
     
     if not top_stats:
         text += "Пока пусто. Сезон только начался! 🍂"
     
     i = 1
     for data in top_stats:
-        rank = data.get('current_rank', 'Порядочный 😐')
+        rank = escape(data.get('current_rank', 'Порядочный 😐'))
         points = data.get('total_points', 0)
         wins = data.get('snitch_count', 0)
+        username = escape(data.get('username', 'Unknown'))
+        last_title = escape(data.get('last_title', '-'))
         
-        text += f"{i}. {data.get('username', 'Unknown')} — {points} очков\n"
+        text += f"{i}. {username} — {points} очков\n"
         text += f"   Масть: {rank}\n"
-        text += f"   Снитч Дня: {wins} | Последняя малява: {data.get('last_title', '-')}\n\n"
+        text += f"   Снитч Дня: {wins} | Последняя малява: {last_title}\n\n"
         i += 1
         
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("rules"))
 async def cmd_rules(message: types.Message):
@@ -66,25 +69,25 @@ async def cmd_rules(message: types.Message):
     Show the rules and point system.
     """
     text = (
-        "📜 *Кодекс Снитча*\n\n"
+        "📜 <b>Кодекс Снитча</b>\n\n"
         "За что начисляются очки (суммируются за день):\n"
-        "🔹 *Нытье* — 10 pts\n"
-        "🔹 *Духота/Игнор* — 15 pts\n"
-        "🔹 *Кринж* — 20 pts\n"
-        "🔹 *Токсичность* — 25 pts\n"
-        "🔹 *Снитчевание* — 50 pts\n\n"
-        "⚠️ *Особые правила:*\n"
+        "🔹 <b>Нытье</b> — 10 pts\n"
+        "🔹 <b>Духота/Игнор</b> — 15 pts\n"
+        "🔹 <b>Кринж</b> — 20 pts\n"
+        "🔹 <b>Токсичность</b> — 25 pts\n"
+        "🔹 <b>Снитчевание</b> — 50 pts\n\n"
+        "⚠️ <b>Особые правила:</b>\n"
         "🤡 Реакция клоуна = Токсичность\n"
         "👻 Игнор тега = Духота или Токсичность\n"
-        "🧹 *Еженедельная Амнистия:* Каждое воскресенье очки делятся на 2.\n\n"
-        "👑 *Масти:*\n"
+        "🧹 <b>Еженедельная Амнистия:</b> Каждое воскресенье очки делятся на 2.\n\n"
+        "👑 <b>Масти:</b>\n"
         "▫️ 0-49: Порядочный 😐\n"
         "▫️ 50-249: Шнырь 🧹\n"
         "▫️ 250-749: Козёл 🐐\n"
         "▫️ 750-1499: Обиженный 🚽\n"
         "▫️ 1500+: Масть Проткнутая 👑"
     )
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("status", "me"))
 async def cmd_status(message: types.Message):
@@ -104,22 +107,22 @@ async def cmd_status(message: types.Message):
         stats = None # Treat as clean for this season
 
     if not stats:
-        await message.answer(f"👤 *{target_user.full_name}* без косяков. (0 очков)")
+        await message.answer(f"👤 <b>{escape(target_user.full_name)}</b> без косяков. (0 очков)", parse_mode="HTML")
         return
 
-    rank = stats.get('current_rank', 'Порядочный 😐')
+    rank = escape(stats.get('current_rank', 'Порядочный 😐'))
     points = stats.get('total_points', 0)
     wins = stats.get('snitch_count', 0)
-    last_title = stats.get('last_title', 'Нет')
+    last_title = escape(stats.get('last_title', 'Нет'))
     
     text = (
-        f"👤 *Личное Дело:* {target_user.full_name}\n\n"
-        f"🏷️ *Масть:* {rank}\n"
-        f"⚖️ *Очки:* {points}\n"
-        f"🏆 *Снитч Дня:* {wins}\n"
-        f"🔖 *Последняя малява:* {last_title}"
+        f"👤 <b>Личное Дело:</b> {escape(target_user.full_name)}\n\n"
+        f"🏷️ <b>Масть:</b> {rank}\n"
+        f"⚖️ <b>Очки:</b> {points}\n"
+        f"🏆 <b>Снитч Дня:</b> {wins}\n"
+        f"🔖 <b>Последняя малява:</b> {last_title}"
     )
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("report"))
 async def cmd_report(message: types.Message):
@@ -127,7 +130,7 @@ async def cmd_report(message: types.Message):
     Report a message for being 'bad'.
     """
     if not message.reply_to_message or not message.reply_to_message.text:
-        await message.answer("❌ *Ошибка:* Используйте команду ответом на сообщение снитча.")
+        await message.answer("❌ <b>Ошибка:</b> Используйте команду ответом на сообщение снитча.", parse_mode="HTML")
         return
 
     reported_msg = message.reply_to_message
@@ -137,14 +140,14 @@ async def cmd_report(message: types.Message):
         await message.answer("❌ Самодонос? Это конечно похвально, но нет.")
         return
 
-    status_msg = await message.answer("🕵️‍♂️ *Анализ доноса...*")
+    status_msg = await message.answer("🕵️‍♂️ <b>Анализ доноса...</b>", parse_mode="HTML")
     
     # Validate with AI
     result = await validate_report(reported_msg.text)
     
     if result and result.get("valid"):
-        category = result.get("category", "Unspecified")
-        reason = result.get("reason", "Violation detected")
+        category = escape(result.get("category", "Unspecified"))
+        reason = escape(result.get("reason", "Violation detected"))
         
         # Mark in DB
         await mark_message_reported(
@@ -155,19 +158,19 @@ async def cmd_report(message: types.Message):
         )
         
         await status_msg.edit_text(
-            f"✅ *Донос принят!*\n\n"
-            f"📂 *Категория:* {category}\n"
-            f"📝 *Вердикт:* {reason}\n"
-            f"👮‍♂️ _Ну ты конечно козёл._",
-            parse_mode="Markdown"
+            f"✅ <b>Донос принят!</b>\n\n"
+            f"📂 <b>Категория:</b> {category}\n"
+            f"📝 <b>Вердикт:</b> {reason}\n"
+            f"👮‍♂️ <i>Ну ты конечно козёл.</i>",
+            parse_mode="HTML"
         )
     else:
-        deny_reason = result.get("reason", "Not a violation") if result else "AI Error"
+        deny_reason = escape(result.get("reason", "Not a violation") if result else "AI Error")
         await status_msg.edit_text(
-            f"❌ *Отклонено.*\n\n"
+            f"❌ <b>Отклонено.</b>\n\n"
             f"Это не масть. Хватит спамить, ты уже ходишь под вопросом, клоун.\n"
-            f"_(Причина: {deny_reason})_",
-            parse_mode="Markdown"
+            f"<i>(Причина: {deny_reason})</i>",
+            parse_mode="HTML"
         )
 
 @router.message_reaction()
