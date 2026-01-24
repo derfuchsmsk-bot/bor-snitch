@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id
 from ..services.ai import validate_report
 from datetime import datetime, timezone
 import logging
@@ -24,7 +24,7 @@ async def cmd_stats(message: types.Message):
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
     # Get current season
-    current_season = datetime.now(timezone.utc).strftime("%Y-%m")
+    current_season = get_current_season_id()
     
     # Fetch all and filter in python to handle "lazy reset" view
     # (Users with old season_id shouldn't appear in current leaderboard)
@@ -97,7 +97,7 @@ async def cmd_status(message: types.Message):
 
     stats = await get_user_stats(message.chat.id, target_user.id)
     
-    current_season = datetime.now(timezone.utc).strftime("%Y-%m")
+    current_season = get_current_season_id()
     
     # Check if stats are from current season
     if stats and stats.get('season_id') != current_season:
