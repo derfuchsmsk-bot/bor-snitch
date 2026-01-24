@@ -51,7 +51,7 @@ cp .env.example .env
 *   `WEBHOOK_URL`: Будет заполнен позже (см. шаг 4).
 *   `GCP_PROJECT_ID`: ID вашего проекта в Google Cloud.
 *   `GCP_LOCATION`: Регион (например, `us-central1`).
-*   `SECRET_TOKEN`: Придумайте любую секретную строку (для защиты эндпоинтов).
+*   `SECRET_TOKEN`: Придумайте любую секретную строку (для защиты эндпоинтов от посторонних).
 
 ### 3. Авторизация в Google Cloud
 
@@ -79,7 +79,7 @@ gcloud config set project YOUR_PROJECT_ID
 
 3.  Скопируйте HTTPS URL от ngrok (например, `https://abc1-23-45.ngrok-free.app`).
 
-4.  Обновите `WEBHOOK_URL` в файле `.env` и перезапустите бота, ИЛИ вручную установите вебхук через браузер/curl:
+4.  Обновите `WEBHOOK_URL` в файле `.env` и перезапустите бота, ИЛИ вручную установите вебхук:
     ```bash
     curl -F "url=https://YOUR_NGROK_URL/webhook" https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook
     ```
@@ -94,8 +94,6 @@ gcloud config set project YOUR_PROJECT_ID
     ```
 
 2.  **Запуск контейнера:**
-    Вам нужно пробросить переменные окружения и файл с кредами Google Cloud (если запускаете не в GCP среде).
-
     ```bash
     docker run -p 8000:8080 --env-file .env bor-snitch
     ```
@@ -139,45 +137,34 @@ gcloud run deploy bor-snitch \
 curl -F "url=https://YOUR_SERVICE_URL/webhook" https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook
 ```
 
-### 4. Настройка Cloud Scheduler (через веб-интерфейс)
+### 4. Настройка Cloud Scheduler
 
-Бот анализирует чат раз в сутки и проводит "амнистию" раз в неделю. Настройте триггеры через Google Cloud Console.
+Бот использует **Cloud Scheduler** для запуска периодических задач, так как Cloud Run может "засыпать".
 
-1.  Перейдите в **Cloud Scheduler**: [console.cloud.google.com/cloudscheduler](https://console.cloud.google.com/cloudscheduler)
-2.  Нажмите **Создать задание (Create Job)**.
+> **Важно:** Поскольку бот не хранит список чатов в памяти для шедулера, вам нужно создать отдельные задачи (Jobs) для **каждого** активного чата.
 
 #### А. Ежедневный анализ (Daily Analysis)
+Триггерит анализ за прошедший день.
 
-*   **Имя:** `daily-analysis`
-*   **Регион:** Выберите тот же, где развернут бот (например, `us-central1`).
+*   **Имя:** `daily-analysis-CHATID`
 *   **Частота:** `50 23 * * *` (каждый день в 23:50).
-*   **Часовой пояс:** UTC (или ваш локальный).
-*   **Тип назначения (Target type):** HTTP
 *   **URL:** `https://YOUR-SERVICE-URL.run.app/analyze_daily`
 *   **HTTP метод:** POST
-*   **Заголовки (HTTP Headers):**
-    *   Добавьте заголовок:
-        *   Name: `X-Secret-Token`
-        *   Value: `ВАШ_SECRET_TOKEN_ИЗ_ENV`
-    *   Content-Type должен быть `application/json` (обычно по умолчанию).
+*   **Заголовки:** `X-Secret-Token: ВАШ_SECRET_TOKEN`
 *   **Тело (Body):**
-    Вставьте **только** JSON-объект (без слова `json` и кавычек вокруг всего блока):
-    ```text
-    {"chat_id": "YOUR_TARGET_CHAT_ID"}
+    ```json
+    {"chat_id": "123456789"}
     ```
-*   Нажмите **Создать**.
 
 #### Б. Еженедельная амнистия (Weekly Decay)
+Делит очки пополам каждое воскресенье.
 
-*   **Имя:** `weekly-decay`
+*   **Имя:** `weekly-decay-CHATID`
 *   **Частота:** `59 23 * * 0` (каждое воскресенье в 23:59).
 *   **URL:** `https://YOUR-SERVICE-URL.run.app/weekly_decay`
 *   **HTTP метод:** POST
-*   **Заголовки:** Те же, что и выше (`X-Secret-Token`).
+*   **Заголовки:** `X-Secret-Token: ВАШ_SECRET_TOKEN`
 *   **Тело (Body):**
-    Вставьте **только** JSON-объект:
-    ```text
-    {"chat_id": "YOUR_TARGET_CHAT_ID"}
+    ```json
+    {"chat_id": "123456789"}
     ```
-
-*Примечание: Вам нужно создать отдельные джобы для каждого активного чата, если их несколько.*
