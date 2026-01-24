@@ -39,7 +39,7 @@ async def scheduled_weekly_decay():
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="🧹 *Еженедельная Амнистия!*\n\nОчки всех грешников поделены на двое. У вас есть шанс исправиться (или нагрешить снова).",
+                    text="🧹 *Еженедельная Амнистия!*\n\nОчки всех моргунчиков поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
                     parse_mode="Markdown"
                 )
             except Exception as e:
@@ -135,7 +135,12 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
             i = 1
             for off in offenders:
                 quote = off.get('quote')
-                text += f"{i}. 👤 *{off.get('username', 'Аноним')}* (+{off.get('points', 0)} pts)\n"
+                username = off.get('username', 'Аноним')
+                user_id = off.get('user_id')
+                if user_id:
+                    text += f"{i}. 👤 [{username}](tg://user?id={user_id}) (+{off.get('points', 0)} pts)\n"
+                else:
+                    text += f"{i}. 👤 *{username}* (+{off.get('points', 0)} pts)\n"
                 text += f"   🏆 *Титул:* {off.get('title', '-')}\n"
                 text += f"   📝 *Вердикт:* {off.get('reason', '-')}\n"
                 if quote:
@@ -166,7 +171,7 @@ async def weekly_decay(request: Request, x_secret_token: str = Header(None, alia
     
     await bot.send_message(
         chat_id=chat_id,
-        text="🧹 *Еженедельная Амнистия!*\n\nОчки всех грешников поделены на двое. У вас есть шанс исправиться (или нагрешить снова).",
+        text="🧹 *Еженедельная Амнистия!*\n\nОчки всех мастюганов поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
         parse_mode="Markdown"
     )
     
