@@ -43,6 +43,37 @@ async def log_message(message):
     
     await doc_ref.set(data)
 
+async def save_agreement(chat_id: int, agreement: dict):
+    """
+    Saves a new agreement found by AI.
+    agreement: { "text": "...", "users": [...], "created_at": ... }
+    """
+    chat_id = str(chat_id)
+    coll_ref = db.collection("chats").document(chat_id).collection("agreements")
+    
+    data = agreement.copy()
+    data['status'] = 'active'
+    # Ensure timestamp is set
+    if 'created_at' not in data:
+        data['created_at'] = firestore.SERVER_TIMESTAMP
+        
+    await coll_ref.add(data)
+
+async def get_active_agreements(chat_id: int):
+    """
+    Fetches active agreements for the chat.
+    """
+    chat_id = str(chat_id)
+    coll_ref = db.collection("chats").document(chat_id).collection("agreements")
+    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))
+    
+    agreements = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data['id'] = doc.id
+        agreements.append(data)
+    return agreements
+
 async def apply_weekly_decay(chat_id: int):
     """
     Halves the points for all users in the current season.

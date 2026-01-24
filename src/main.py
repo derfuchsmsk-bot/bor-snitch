@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db
+from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db, get_active_agreements, save_agreement
 from src.services.ai import analyze_daily_logs
 from datetime import datetime, timezone, timedelta, time
 import logging
@@ -45,6 +45,9 @@ async def perform_chat_analysis(chat_id: str):
     # Date key for saving results (Use MSK date of the end of the period)
     today_str = end_dt_msk.strftime("%Y-%m-%d")
     
+    # Fetch active agreements
+    active_agreements = await get_active_agreements(chat_id)
+    
     logging.info(f"Starting analysis for chat {chat_id}. Window (MSK): {start_dt_msk} to {end_dt_msk}")
     
     logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
@@ -54,7 +57,7 @@ async def perform_chat_analysis(chat_id: str):
         await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов)")
         return {"status": "no logs"}
         
-    result = await analyze_daily_logs(logs)
+    result = await analyze_daily_logs(logs, active_agreements=active_agreements)
     
     if result:
         # Add date info
@@ -62,6 +65,11 @@ async def perform_chat_analysis(chat_id: str):
         
         # Save to DB
         await save_daily_results(chat_id, result)
+        
+        # Save New Agreements
+        new_agreements = result.get('new_agreements', [])
+        for ag in new_agreements:
+            await save_agreement(chat_id, ag)
         
         # Announce in chat
         offenders = result.get('offenders', [])
@@ -85,7 +93,12 @@ async def perform_chat_analysis(chat_id: str):
                     text += f"   💬 _{quote}_\n"
                 text += "\n"
                 i += 1
-               
+        
+        if new_agreements:
+            text += "\n🤝 *Новые договоренности:*\n"
+            for ag in new_agreements:
+                 text += f"📌 {ag.get('text')}\n"
+                 
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
         
     return {"status": "analyzed", "result": result}
@@ -159,11 +172,8 @@ async def on_startup():
     # Weekly Decay: Every Sunday at 23:59 UTC
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
     
-    # Daily Analysis 1: 12:00 MSK (09:00 UTC)
-    scheduler.add_job(scheduled_daily_analysis, 'cron', hour=9, minute=0)
-    
-    # Daily Analysis 2: 23:50 MSK (20:50 UTC)
-    scheduler.add_job(scheduled_daily_analysis, 'cron', hour=20, minute=50)
+    # NOTE: Daily analysis is triggered externally by Cloud Scheduler to support Serverless architecture.
+    # See setup instructions for Cloud Scheduler configuration.
     
     scheduler.start()
 
