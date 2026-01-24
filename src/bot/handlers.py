@@ -1,6 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
-from ..services.db import log_message, db
+from ..services.db import log_message, db, get_user_stats, mark_message_reported
+from ..services.ai import validate_report
 import logging
 
 router = Router()
@@ -37,6 +38,106 @@ async def cmd_stats(message: types.Message):
         i += 1
         
     await message.answer(text, parse_mode="Markdown")
+
+@router.message(Command("rules"))
+async def cmd_rules(message: types.Message):
+    """
+    Show the rules and point system.
+    """
+    text = (
+        "📜 **Кодекс Снитча**\n\n"
+        "За что начисляются очки:\n"
+        "🔹 **Нытье (Whining)** — 10 pts\n"
+        "🔹 **Духота (Stiffness)** — 15 pts\n"
+        "🔹 **Кринж (Cringe)** — 20 pts\n"
+        "🔹 **Токсичность (Toxicity)** — 25 pts\n"
+        "🔹 **Предательство (Betrayal)** — 50 pts\n\n"
+        "👑 **Иерархия:**\n"
+        "▫️ 0-99: Порядочный 😐\n"
+        "▫️ 100-499: Шнырь 🧹\n"
+        "▫️ 500-999: Козёл 🐐\n"
+        "▫️ 1000-2499: Обиженный 🚽\n"
+        "▫️ 2500+: Масть Проткнутая 👑"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(Command("status", "me"))
+async def cmd_status(message: types.Message):
+    """
+    Show personal stats or stats of the replied user.
+    """
+    target_user = message.from_user
+    if message.reply_to_message:
+        target_user = message.reply_to_message.from_user
+
+    stats = await get_user_stats(message.chat.id, target_user.id)
+    
+    if not stats:
+        await message.answer(f"👤 **{target_user.full_name}** пока чист перед законом. (0 очков)")
+        return
+
+    rank = stats.get('current_rank', 'Порядочный 😐')
+    points = stats.get('total_points', 0)
+    wins = stats.get('snitch_count', 0)
+    last_title = stats.get('last_title', 'Нет')
+    
+    text = (
+        f"👤 **Личное Дело:** {target_user.full_name}\n\n"
+        f"🏷️ **Звание:** {rank}\n"
+        f"⚖️ **Очки:** {points}\n"
+        f"🏆 **Побед (Снитч Дня):** {wins}\n"
+        f"🔖 **Последний титул:** {last_title}"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(Command("report"))
+async def cmd_report(message: types.Message):
+    """
+    Report a message for being 'bad'.
+    """
+    if not message.reply_to_message or not message.reply_to_message.text:
+        await message.answer("❌ **Ошибка:** Используйте команду ответом на сообщение нарушителя.")
+        return
+
+    reported_msg = message.reply_to_message
+    
+    # Don't let users report themselves (optional, but logical)
+    if reported_msg.from_user.id == message.from_user.id:
+        await message.answer("❌ Самодонос? Это конечно похвально, но нет.")
+        return
+
+    status_msg = await message.answer("🕵️‍♂️ **Анализ доноса...**")
+    
+    # Validate with AI
+    result = await validate_report(reported_msg.text)
+    
+    if result and result.get("valid"):
+        category = result.get("category", "Unspecified")
+        reason = result.get("reason", "Violation detected")
+        
+        # Mark in DB
+        await mark_message_reported(
+            message.chat.id,
+            reported_msg.message_id,
+            message.from_user.id,
+            f"{category}: {reason}"
+        )
+        
+        await status_msg.edit_text(
+            f"✅ **Донос принят!**\n\n"
+            f"📂 **Категория:** {category}\n"
+            f"📝 **Вердикт:** {reason}\n"
+            f"👮‍♂️ *Администрация благодарит вас за бдительность.*",
+            parse_mode="Markdown"
+        )
+    else:
+        deny_reason = result.get("reason", "Not a violation") if result else "AI Error"
+        await status_msg.edit_text(
+            f"❌ **Отклонено.**\n\n"
+            f"Это не нарушение. Хватит спамить, или сам поедешь в карцер.\n"
+            f"_(Причина: {deny_reason})_",
+            parse_mode="Markdown"
+        )
 
 @router.message(F.text)
 async def handle_messages(message: types.Message):

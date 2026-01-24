@@ -106,3 +106,30 @@ def calculate_rank(points):
         return "Шнырь 🧹"
     else:
         return "Порядочный 😐"
+
+async def get_user_stats(chat_id: int, user_id: int):
+    """
+    Fetches stats for a specific user.
+    """
+    chat_id = str(chat_id)
+    user_id = str(user_id)
+    doc_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
+    doc = await doc_ref.get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
+
+async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str):
+    """
+    Flags a message as reported by a user.
+    """
+    chat_id = str(chat_id)
+    msg_id = str(msg_id)
+    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
+    
+    await doc_ref.set({
+        "is_reported": True,
+        "reported_by": reporter_id,
+        "report_reason": reason,
+        "report_timestamp": firestore.SERVER_TIMESTAMP
+    }, merge=True)

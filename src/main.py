@@ -15,6 +15,19 @@ app = FastAPI()
 # Initialize Bot and Dispatcher
 # Bot is initialized globally here
 bot = Bot(token=settings.TELEGRAM_TOKEN)
+
+@app.on_event("startup")
+async def on_startup():
+    """
+    Set bot commands on startup.
+    """
+    commands = [
+        types.BotCommand(command="status", description="Мое личное дело"),
+        types.BotCommand(command="stats", description="Топ Снитчей"),
+        types.BotCommand(command="rules", description="Кодекс Снитча"),
+        types.BotCommand(command="report", description="Донести на ближнего (Reply)"),
+    ]
+    await bot.set_my_commands(commands)
 dp = Dispatcher()
 dp.include_router(router)
 

@@ -33,6 +33,54 @@ SYSTEM_PROMPT = """
 Важно: user_id должен быть числом (из лога).
 """
 
+REPORT_VALIDATION_PROMPT = """
+Ты — строгий модератор "Снитч-бота". Твоя задача — проверить, является ли сообщение нарушением.
+
+КАТЕГОРИИ (Violations):
+1. Whining (Нытье) - жалобы.
+2. Stiffness (Духота) - занудство.
+3. Cringe (Кринж) - стыд.
+4. Toxicity (Токсичность) - агрессия.
+5. Betrayal (Предательство) - слив.
+
+Твой ответ должен быть JSON:
+{
+  "valid": true/false,
+  "category": "Whining" (или null),
+  "reason": "Короткое объяснение на русском"
+}
+
+Если сообщение нейтральное, смешное (в хорошем смысле) или не подходит под категории — ставь valid: false.
+Будь строг. Не каждое сообщение — это нарушение.
+"""
+
+async def validate_report(text):
+    """
+    Checks if a reported message is actually a violation.
+    Returns: { valid: bool, category: str, reason: str }
+    """
+    if not text:
+        return {"valid": False, "reason": "Empty message"}
+
+    model = GenerativeModel("gemini-3-flash-preview")
+    
+    prompt = f"""
+    Проверь это сообщение на нарушения:
+    "{text}"
+    
+    Верни JSON.
+    """
+    
+    try:
+        response = await model.generate_content_async(
+            contents=[REPORT_VALIDATION_PROMPT, prompt],
+            generation_config={"response_mime_type": "application/json"}
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        logging.error(f"Error during report validation: {e}")
+        return {"valid": False, "reason": "AI Error"}
+
 async def analyze_daily_logs(logs):
     """
     Sends chat logs to Gemini and returns the winner analysis.
