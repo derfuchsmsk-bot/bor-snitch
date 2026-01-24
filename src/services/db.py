@@ -69,15 +69,40 @@ async def save_daily_winner(chat_id: int, winner_data: dict):
     daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
     await daily_ref.set(winner_data)
     
-    # 2. Update user stats (increment counter)
+    # 2. Update user stats (increment counter and points)
     if winner_data.get('user_id'):
         user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(winner_data['user_id']))
         
-        # Transactional update would be better, but simple merge is okay for MVP
-        # Using increment transform
+        # Get current stats to calculate new rank (need a transaction ideally, but read-write is fine for low load)
+        doc = await user_stats_ref.get()
+        current_points = 0
+        if doc.exists:
+            current_points = doc.to_dict().get("total_points", 0)
+            
+        new_points = current_points + winner_data.get('points', 0)
+        new_rank = calculate_rank(new_points)
+
         await user_stats_ref.set({
             "username": winner_data['username'],
             "snitch_count": firestore.Increment(1),
+            "total_points": firestore.Increment(winner_data.get('points', 0)),
+            "current_rank": new_rank,
             "last_title": winner_data['title'],
             "last_win_date": winner_data['date_key']
         }, merge=True)
+
+def calculate_rank(points):
+    """
+    Calculates the Snitch Rank based on total points.
+    Theme: Prison Caste (Reverse/Ironic)
+    """
+    if points >= 2500:
+        return "Масть Проткнутая 👑"
+    elif points >= 1000:
+        return "Обиженный 🚽"
+    elif points >= 500:
+        return "Козёл 🐐"
+    elif points >= 100:
+        return "Шнырь 🧹"
+    else:
+        return "Порядочный 😐"

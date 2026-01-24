@@ -16,18 +16,24 @@ async def cmd_stats(message: types.Message):
     """
     Show current snitch stats.
     """
-    # Fetch stats from Firestore (simplified for now)
-    # Ideally, we query the 'user_stats' subcollection
+    # Fetch stats from Firestore
     chat_id = str(message.chat.id)
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
-    docs = stats_ref.order_by("snitch_count", direction="DESCENDING").limit(5).stream()
     
-    text = "🏆 **Топ Снитчей:**\n\n"
+    # Sort by total_points
+    docs = stats_ref.order_by("total_points", direction="DESCENDING").limit(10).stream()
+    
+    text = "🏆 **Топ Снитчей (Иерархия):**\n\n"
     i = 1
     async for doc in docs:
         data = doc.to_dict()
-        text += f"{i}. {data.get('username', 'Unknown')} — {data.get('snitch_count', 0)} раз(а)\n"
-        text += f"   Last title: {data.get('last_title', 'N/A')}\n"
+        rank = data.get('current_rank', 'Порядочный 😐')
+        points = data.get('total_points', 0)
+        wins = data.get('snitch_count', 0)
+        
+        text += f"{i}. {data.get('username', 'Unknown')} — {points} очков\n"
+        text += f"   Масть: {rank}\n"
+        text += f"   Побед: {wins} | Последний титул: {data.get('last_title', '-')}\n\n"
         i += 1
         
     await message.answer(text, parse_mode="Markdown")
