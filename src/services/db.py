@@ -76,17 +76,16 @@ async def apply_weekly_decay(chat_id: int):
     return True
     # logging.info(f"Logged message {msg_id} for chat {chat_id}")
 
-async def get_logs_for_date(chat_id: int, date_key: str):
+async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: datetime):
     """
-    Fetches messages for a specific date.
+    Fetches messages within a specific time range [start_dt, end_dt).
     """
     chat_ref = db.collection("chats").document(str(chat_id))
     messages_ref = chat_ref.collection("messages")
     
-    # Query: where date_key == date_key
-    # Note: You might need a composite index in Firestore for complex queries, 
-    # but strictly equality on one field is fine.
-    query = messages_ref.where(filter=firestore.FieldFilter("date_key", "==", date_key))
+    # Query: timestamp >= start_dt AND timestamp < end_dt
+    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", ">=", start_dt))\
+                        .where(filter=firestore.FieldFilter("timestamp", "<", end_dt))
     
     logs = []
     async for doc in query.stream():
@@ -106,13 +105,47 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
     str_chat_id = str(chat_id)
     date_key = analysis_result['date_key']
     
-    # 1. Save the daily result record
     daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
+    current_season = get_current_season_id()
+    
+    # 1. Check for existing results for this date (Idempotency / Re-run logic)
+    # If we run analysis multiple times a day, we must not double-count points.
+    # We revert the previous points for this day before adding new ones.
+    existing_doc = await daily_ref.get()
+    
+    if existing_doc.exists:
+        logging.info(f"Re-analyzing date {date_key} for chat {chat_id}. Reverting previous points.")
+        old_data = existing_doc.to_dict()
+        old_offenders = old_data.get('offenders', [])
+        
+        # Revert old points
+        for offender in old_offenders:
+            user_id = offender.get('user_id')
+            if not user_id: continue
+            
+            user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(user_id))
+            doc = await user_stats_ref.get()
+            
+            if doc.exists:
+                data = doc.to_dict()
+                if data.get('season_id') == current_season:
+                    # Subtract points
+                    reverted_points = max(0, data.get("total_points", 0) - offender.get('points', 0))
+                    # Decrement snitch count (assuming 1 win/violation per daily record)
+                    reverted_wins = max(0, data.get("snitch_count", 0) - 1)
+                    reverted_rank = calculate_rank(reverted_points)
+                    
+                    await user_stats_ref.update({
+                        "total_points": reverted_points,
+                        "snitch_count": reverted_wins,
+                        "current_rank": reverted_rank
+                    })
+
+    # 2. Save the NEW daily result record
     await daily_ref.set(analysis_result)
     
-    # 2. Update user stats for EACH offender
+    # 3. Update user stats for EACH offender (New points)
     offenders = analysis_result.get('offenders', [])
-    current_season = get_current_season_id()
     
     for offender in offenders:
         user_id = offender.get('user_id')

@@ -3,9 +3,9 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_date, save_daily_results, apply_weekly_decay, db
+from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db
 from src.services.ai import analyze_daily_logs
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time
 import logging
 
 # Configure logging
@@ -17,6 +17,100 @@ scheduler = AsyncIOScheduler()
 # Initialize Bot and Dispatcher
 # Bot is initialized globally here
 bot = Bot(token=settings.TELEGRAM_TOKEN)
+
+async def perform_chat_analysis(chat_id: str):
+    """
+    Core logic for daily analysis.
+    """
+    # Calculate time window: 23:50 MSK to 23:50 MSK
+    msk_tz = timezone(timedelta(hours=3))
+    now_msk = datetime.now(msk_tz)
+    
+    # Determine the date we are analyzing.
+    # If it's early morning (e.g. before 4 AM), we assume we are finalizing yesterday's business.
+    # Otherwise (e.g. 12:00 or 23:50), we are analyzing Today.
+    analysis_date = now_msk.date()
+    if now_msk.hour < 4:
+         analysis_date -= timedelta(days=1)
+         
+    # End of window is always 23:50 of the analysis_date
+    end_dt_msk = datetime.combine(analysis_date, time(23, 50), tzinfo=msk_tz)
+    
+    start_dt_msk = end_dt_msk - timedelta(days=1)
+    
+    # Convert to UTC for DB query
+    end_dt_utc = end_dt_msk.astimezone(timezone.utc)
+    start_dt_utc = start_dt_msk.astimezone(timezone.utc)
+    
+    # Date key for saving results (Use MSK date of the end of the period)
+    today_str = end_dt_msk.strftime("%Y-%m-%d")
+    
+    logging.info(f"Starting analysis for chat {chat_id}. Window (MSK): {start_dt_msk} to {end_dt_msk}")
+    
+    logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
+    
+    if not logs:
+        logging.info("No logs found.")
+        await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов)")
+        return {"status": "no logs"}
+        
+    result = await analyze_daily_logs(logs)
+    
+    if result:
+        # Add date info
+        result['date_key'] = today_str
+        
+        # Save to DB
+        await save_daily_results(chat_id, result)
+        
+        # Announce in chat
+        offenders = result.get('offenders', [])
+        
+        if not offenders:
+            text = "✨ *ИТОГИ ДНЯ* ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
+        else:
+            text = "🚨 *ИТОГИ ДНЯ* 🚨\n\n"
+            i = 1
+            for off in offenders:
+                quote = off.get('quote')
+                username = off.get('username', 'Аноним')
+                user_id = off.get('user_id')
+                if user_id:
+                    text += f"{i}. 👤 [{username}](tg://user?id={user_id}) (+{off.get('points', 0)} pts)\n"
+                else:
+                    text += f"{i}. 👤 *{username}* (+{off.get('points', 0)} pts)\n"
+                text += f"   🏆 *Малява по этапу:* {off.get('title', '-')}\n"
+                text += f"   📝 *Вердикт:* {off.get('reason', '-')}\n"
+                if quote:
+                    text += f"   💬 _{quote}_\n"
+                text += "\n"
+                i += 1
+               
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        
+    return {"status": "analyzed", "result": result}
+
+async def scheduled_daily_analysis():
+    """
+    Runs daily analysis for all active chats.
+    """
+    logging.info("Starting scheduled daily analysis...")
+    try:
+        chats_ref = db.collection("chats")
+        async for chat_doc in chats_ref.stream():
+            chat_data = chat_doc.to_dict()
+            if not chat_data.get("active"):
+                continue
+            
+            chat_id = chat_doc.id
+            logging.info(f"Running daily analysis for chat {chat_id}")
+            try:
+                await perform_chat_analysis(chat_id)
+            except Exception as e:
+                logging.error(f"Failed to analyze chat {chat_id}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error in scheduled analysis: {e}")
 
 async def scheduled_weekly_decay():
     """
@@ -61,8 +155,16 @@ async def on_startup():
     ]
     await bot.set_my_commands(commands)
     
-    # Start Scheduler (Every Sunday at 23:59 UTC)
+    # Start Scheduler
+    # Weekly Decay: Every Sunday at 23:59 UTC
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
+    
+    # Daily Analysis 1: 12:00 MSK (09:00 UTC)
+    scheduler.add_job(scheduled_daily_analysis, 'cron', hour=9, minute=0)
+    
+    # Daily Analysis 2: 23:50 MSK (20:50 UTC)
+    scheduler.add_job(scheduled_daily_analysis, 'cron', hour=20, minute=50)
+    
     scheduler.start()
 
 dp = Dispatcher()
@@ -101,56 +203,7 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
     if not chat_id:
         raise HTTPException(status_code=400, detail="Missing chat_id")
         
-    # Get logs for current UTC day
-    # Note: If users are in UTC+3, and scheduler runs at 21:00 UTC (00:00 MSK), 
-    # we should check which 'date_key' we are targeting.
-    # For MVP: We assume scheduler runs at 23:50 UTC and we analyze current UTC date.
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    logging.info(f"Starting analysis for chat {chat_id} date {today_str}")
-    
-    logs = await get_logs_for_date(chat_id, today_str)
-    
-    if not logs:
-        logging.info("No logs found.")
-        await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов)")
-        return {"status": "no logs"}
-        
-    result = await analyze_daily_logs(logs)
-    
-    if result:
-        # Add date info
-        result['date_key'] = today_str
-        
-        # Save to DB
-        await save_daily_results(chat_id, result)
-        
-        # Announce in chat
-        offenders = result.get('offenders', [])
-        
-        if not offenders:
-            text = "✨ *ИТОГИ ДНЯ* ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
-        else:
-            text = "🚨 *ИТОГИ ДНЯ* 🚨\n\n"
-            i = 1
-            for off in offenders:
-                quote = off.get('quote')
-                username = off.get('username', 'Аноним')
-                user_id = off.get('user_id')
-                if user_id:
-                    text += f"{i}. 👤 [{username}](tg://user?id={user_id}) (+{off.get('points', 0)} pts)\n"
-                else:
-                    text += f"{i}. 👤 *{username}* (+{off.get('points', 0)} pts)\n"
-                text += f"   🏆 *Малява по этапу:* {off.get('title', '-')}\n"
-                text += f"   📝 *Вердикт:* {off.get('reason', '-')}\n"
-                if quote:
-                    text += f"   💬 _{quote}_\n"
-                text += "\n"
-                i += 1
-               
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
-        
-    return {"status": "analyzed", "result": result}
+    return await perform_chat_analysis(chat_id)
 
 @app.post("/weekly_decay")
 async def weekly_decay(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
