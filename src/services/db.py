@@ -58,7 +58,9 @@ async def get_logs_for_date(chat_id: int, date_key: str):
     
     logs = []
     async for doc in query.stream():
-        logs.append(doc.to_dict())
+        data = doc.to_dict()
+        data['message_id'] = doc.id
+        logs.append(data)
         
     # Sort by timestamp
     logs.sort(key=lambda x: x['timestamp'])

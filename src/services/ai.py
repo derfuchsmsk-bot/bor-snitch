@@ -31,7 +31,8 @@ SYSTEM_PROMPT = """
   "title": "Смешной титул дня (на основе проступка)",
   "category": "Whining",
   "points": 10,
-  "reason": "Короткое, смешное и обидное обоснование (2-3 предложения). Можно использовать матерную лексику, но в меру."
+  "reason": "Короткое, смешное и обидное обоснование (2-3 предложения). Можно использовать матерную лексику, но в меру.",
+  "quote": "Цитата сообщения или описание действия (реакции), за которое начислены очки. Если это стикер/реакция - опиши их."
 }
 
 Если явного кандидата нет, выбери того, кто был ближе всего к категории "Кринж" или "Духота". Не отказывайся от выбора.
@@ -101,6 +102,10 @@ async def analyze_daily_logs(logs):
     # Use the latest Flash model
     model = GenerativeModel("gemini-3-flash-preview")
     
+    # Build context map (msg_id -> username) for replies
+    # Note: message_id comes from doc.id which is string, reply_to is int
+    id_map = {log.get('message_id'): log.get('username') for log in logs if log.get('message_id')}
+
     # Format logs into a readable string
     chat_history = "LOG START\n"
     for log in logs:
@@ -108,7 +113,17 @@ async def analyze_daily_logs(logs):
         ts = log['timestamp']
         time_str = ts.strftime("%H:%M") if hasattr(ts, 'strftime') else str(ts)
         
-        chat_history += f"[{time_str}] {log['username']} (ID: {log['user_id']}): {log['text']}\n"
+        # Resolve reply context
+        reply_context = ""
+        reply_id = log.get('reply_to')
+        if reply_id:
+            target_user = id_map.get(str(reply_id))
+            if target_user:
+                reply_context = f" (replied to {target_user})"
+            else:
+                reply_context = " (reply)"
+        
+        chat_history += f"[{time_str}] {log['username']} (ID: {log['user_id']}){reply_context}: {log['text']}\n"
     chat_history += "LOG END"
 
     prompt = f"""

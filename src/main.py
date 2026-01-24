@@ -89,10 +89,16 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
         await save_daily_winner(chat_id, result)
         
         # Announce in chat
+        quote = result.get('quote')
+        
         text = f"🚨 **ИТОГИ ДНЯ** 🚨\n\n" \
                f"🏆 **Снитч дня:** {result.get('username', 'Аноним')}\n" \
-               f"👑 **Титул:** {result.get('title', 'Неизвестный')}\n" \
-               f"📝 **Вердикт:** {result.get('reason', 'Нет описания')}"
+               f"👑 **Титул:** {result.get('title', 'Неизвестный')}\n\n"
+               
+        if quote:
+            text += f"💬 **Доказательство:**\n_{quote}_\n\n"
+            
+        text += f"📝 **Вердикт:** {result.get('reason', 'Нет описания')}"
                
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
         
