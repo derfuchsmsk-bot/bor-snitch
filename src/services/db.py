@@ -24,7 +24,10 @@ async def log_message(message):
     
     doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
     
-    text_content = message.text or message.caption or ""
+    text_content = message.text or message.caption
+    if not text_content and message.sticker:
+        text_content = f"[STICKER] {message.sticker.emoji or 'Unknown'}"
+
     if not text_content:
         return # Skip non-text messages for now
         
@@ -148,3 +151,45 @@ async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, rea
         "report_reason": reason,
         "report_timestamp": firestore.SERVER_TIMESTAMP
     }, merge=True)
+
+async def log_reaction(chat_id: int, user_id: int, username: str, message_id: int, emoji: str, timestamp: datetime):
+    """
+    Logs a reaction event. Fetches the original message to provide context.
+    """
+    chat_id = str(chat_id)
+    message_id = str(message_id)
+    
+    # Fetch original message
+    msg_ref = db.collection("chats").document(chat_id).collection("messages").document(message_id)
+    msg_doc = await msg_ref.get()
+    
+    original_text = "Unknown Message"
+    target_user = "Unknown"
+    
+    if msg_doc.exists:
+        data = msg_doc.to_dict()
+        original_text = data.get("text", "")
+        target_user = data.get("username", "Unknown")
+        
+    # Create log entry
+    # We use a composite key to avoid duplicates if needed, but timestamp is good enough
+    reaction_id = f"reaction_{message_id}_{user_id}_{int(timestamp.timestamp())}"
+    
+    date_key = timestamp.strftime("%Y-%m-%d")
+    
+    log_text = f"[REACTION] {username} reacted {emoji} to {target_user}'s message: \"{original_text}\""
+    
+    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(reaction_id)
+    
+    data = {
+        "user_id": int(user_id),
+        "username": username,
+        "full_name": username, # Fallback
+        "text": log_text,
+        "timestamp": timestamp,
+        "date_key": date_key,
+        "type": "reaction",
+        "target_msg_id": message_id
+    }
+    
+    await doc_ref.set(data)

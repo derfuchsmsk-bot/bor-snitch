@@ -1,6 +1,7 @@
 from aiogram import Router, types, F
+from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction
 from ..services.ai import validate_report
 from datetime import datetime, timezone
 import logging
@@ -165,10 +166,37 @@ async def cmd_report(message: types.Message):
             parse_mode="Markdown"
         )
 
-@router.message(F.text)
+@router.message_reaction()
+async def handle_reactions(reaction: MessageReactionUpdated):
+    """
+    Log reactions to messages.
+    """
+    # We only care about added reactions
+    
+    # Check what was added
+    old_emojis = {r.emoji for r in reaction.old_reaction if hasattr(r, 'emoji')}
+    new_emojis = {r.emoji for r in reaction.new_reaction if hasattr(r, 'emoji')}
+    
+    added = new_emojis - old_emojis
+    
+    if not added:
+        return
+        
+    # Log each added emoji
+    for emoji in added:
+        await log_reaction(
+            chat_id=reaction.chat.id,
+            user_id=reaction.user.id,
+            username=reaction.user.username or reaction.user.first_name,
+            message_id=reaction.message_id,
+            emoji=emoji,
+            timestamp=reaction.date
+        )
+
+@router.message(F.text | F.sticker)
 async def handle_messages(message: types.Message):
     """
-    Catch all text messages and log them.
+    Catch all text messages and stickers and log them.
     """
     # Log to Firestore
     try:
