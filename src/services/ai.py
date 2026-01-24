@@ -40,7 +40,7 @@ async def analyze_daily_logs(logs):
         return None
 
     # Use the latest Flash model
-    model = GenerativeModel("gemini-1.5-flash-001")
+    model = GenerativeModel("gemini-3-flash-preview")
     
     # Format logs into a readable string
     chat_history = "LOG START\n"
