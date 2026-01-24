@@ -42,7 +42,7 @@ async def cmd_stats(message: types.Message):
     # Take top 10
     top_stats = stats_list[:10]
     
-    text = f"🏆 **Топ Снитчей (Сезон {current_season}):**\n\n"
+    text = f"🏆 *Топ Снитчей (Сезон {current_season}):*\n\n"
     
     if not top_stats:
         text += "Пока пусто. Сезон только начался! 🍂"
@@ -66,14 +66,18 @@ async def cmd_rules(message: types.Message):
     Show the rules and point system.
     """
     text = (
-        "📜 **Кодекс Снитча**\n\n"
-        "За что начисляются очки:\n"
-        "🔹 **Нытье (Whining)** — 10 pts\n"
-        "🔹 **Духота (Stiffness)** — 15 pts\n"
-        "🔹 **Кринж (Cringe)** — 20 pts\n"
-        "🔹 **Токсичность (Toxicity)** — 25 pts\n"
-        "🔹 **Предательство (Betrayal)** — 50 pts\n\n"
-        "👑 **Иерархия:**\n"
+        "📜 *Кодекс Снитча*\n\n"
+        "За что начисляются очки (суммируются за день):\n"
+        "🔹 *Нытье (Whining)* — 10 pts\n"
+        "🔹 *Духота/Игнор (Stiffness)* — 15 pts\n"
+        "🔹 *Кринж (Cringe)* — 20 pts\n"
+        "🔹 *Токсичность (Toxicity)* — 25 pts\n"
+        "🔹 *Предательство (Betrayal)* — 50 pts\n\n"
+        "⚠️ *Особые правила:*\n"
+        "🤡 Реакция клоуна = Токсичность\n"
+        "👻 Игнор тега = Духота или Токсичность\n"
+        "🧹 *Еженедельная Амнистия:* Каждое воскресенье очки делятся на 2.\n\n"
+        "👑 *Иерархия:*\n"
         "▫️ 0-49: Порядочный 😐\n"
         "▫️ 50-249: Шнырь 🧹\n"
         "▫️ 250-749: Козёл 🐐\n"
@@ -100,7 +104,7 @@ async def cmd_status(message: types.Message):
         stats = None # Treat as clean for this season
 
     if not stats:
-        await message.answer(f"👤 **{target_user.full_name}** пока чист перед законом в этом сезоне. (0 очков)")
+        await message.answer(f"👤 *{target_user.full_name}* пока чист перед законом в этом сезоне. (0 очков)")
         return
 
     rank = stats.get('current_rank', 'Порядочный 😐')
@@ -109,11 +113,11 @@ async def cmd_status(message: types.Message):
     last_title = stats.get('last_title', 'Нет')
     
     text = (
-        f"👤 **Личное Дело:** {target_user.full_name}\n\n"
-        f"🏷️ **Звание:** {rank}\n"
-        f"⚖️ **Очки:** {points}\n"
-        f"🏆 **Побед (Снитч Дня):** {wins}\n"
-        f"🔖 **Последний титул:** {last_title}"
+        f"👤 *Личное Дело:* {target_user.full_name}\n\n"
+        f"🏷️ *Звание:* {rank}\n"
+        f"⚖️ *Очки:* {points}\n"
+        f"🏆 *Побед (Снитч Дня):* {wins}\n"
+        f"🔖 *Последний титул:* {last_title}"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -123,7 +127,7 @@ async def cmd_report(message: types.Message):
     Report a message for being 'bad'.
     """
     if not message.reply_to_message or not message.reply_to_message.text:
-        await message.answer("❌ **Ошибка:** Используйте команду ответом на сообщение нарушителя.")
+        await message.answer("❌ *Ошибка:* Используйте команду ответом на сообщение нарушителя.")
         return
 
     reported_msg = message.reply_to_message
@@ -133,7 +137,7 @@ async def cmd_report(message: types.Message):
         await message.answer("❌ Самодонос? Это конечно похвально, но нет.")
         return
 
-    status_msg = await message.answer("🕵️‍♂️ **Анализ доноса...**")
+    status_msg = await message.answer("🕵️‍♂️ *Анализ доноса...*")
     
     # Validate with AI
     result = await validate_report(reported_msg.text)
@@ -151,16 +155,16 @@ async def cmd_report(message: types.Message):
         )
         
         await status_msg.edit_text(
-            f"✅ **Донос принят!**\n\n"
-            f"📂 **Категория:** {category}\n"
-            f"📝 **Вердикт:** {reason}\n"
-            f"👮‍♂️ *Администрация благодарит вас за бдительность.*",
+            f"✅ *Донос принят!*\n\n"
+            f"📂 *Категория:* {category}\n"
+            f"📝 *Вердикт:* {reason}\n"
+            f"👮‍♂️ _Администрация благодарит вас за бдительность._",
             parse_mode="Markdown"
         )
     else:
         deny_reason = result.get("reason", "Not a violation") if result else "AI Error"
         await status_msg.edit_text(
-            f"❌ **Отклонено.**\n\n"
+            f"❌ *Отклонено.*\n\n"
             f"Это не нарушение. Хватит спамить, или сам поедешь в карцер.\n"
             f"_(Причина: {deny_reason})_",
             parse_mode="Markdown"
