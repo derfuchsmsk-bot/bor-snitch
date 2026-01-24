@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import logging
 
 def get_current_season_id():
-    """Returns the current season ID (YYYY-MM)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m")
+    """Returns the current season ID (Global)."""
+    return "global" # Single season forever, only weekly decay
 
 # Initialize Firestore Async Client
 # Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var or running in GCP
@@ -42,6 +42,38 @@ async def log_message(message):
     }
     
     await doc_ref.set(data)
+
+async def apply_weekly_decay(chat_id: int):
+    """
+    Halves the points for all users in the current season.
+    """
+    chat_id = str(chat_id)
+    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
+    
+    current_season = get_current_season_id()
+    
+    # Process all users
+    async for doc in stats_ref.stream():
+        data = doc.to_dict()
+        
+        # Only affect current season
+        if data.get('season_id') != current_season:
+            continue
+            
+        current_points = data.get('total_points', 0)
+        
+        if current_points == 0:
+            continue
+            
+        new_points = current_points // 2
+        new_rank = calculate_rank(new_points)
+        
+        await stats_ref.document(doc.id).update({
+            "total_points": new_points,
+            "current_rank": new_rank
+        })
+        
+    return True
     # logging.info(f"Logged message {msg_id} for chat {chat_id}")
 
 async def get_logs_for_date(chat_id: int, date_key: str):
@@ -66,49 +98,53 @@ async def get_logs_for_date(chat_id: int, date_key: str):
     logs.sort(key=lambda x: x['timestamp'])
     return logs
 
-async def save_daily_winner(chat_id: int, winner_data: dict):
+async def save_daily_results(chat_id: int, analysis_result: dict):
     """
-    Saves the result of the daily analysis.
-    winner_data should contain: user_id, username, title, reason, date_key
+    Saves the result of the daily analysis (list of offenders).
+    analysis_result: { "offenders": [...], "date_key": ... }
     """
     str_chat_id = str(chat_id)
-    date_key = winner_data['date_key']
+    date_key = analysis_result['date_key']
     
     # 1. Save the daily result record
     daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
-    await daily_ref.set(winner_data)
+    await daily_ref.set(analysis_result)
     
-    # 2. Update user stats (increment counter and points)
-    if winner_data.get('user_id'):
-        user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(winner_data['user_id']))
+    # 2. Update user stats for EACH offender
+    offenders = analysis_result.get('offenders', [])
+    current_season = get_current_season_id()
+    
+    for offender in offenders:
+        user_id = offender.get('user_id')
+        if not user_id:
+            continue
+            
+        user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(user_id))
         
-        # Get current stats to calculate new rank (need a transaction ideally, but read-write is fine for low load)
+        # Get current stats
         doc = await user_stats_ref.get()
-        current_season = get_current_season_id()
         
         current_points = 0
-        current_wins = 0
+        current_wins = 0 # Count as "Days with violations"
         
-        # Lazy Reset: Check if season changed
         if doc.exists:
             data = doc.to_dict()
             if data.get('season_id') == current_season:
                 current_points = data.get("total_points", 0)
                 current_wins = data.get("snitch_count", 0)
-            # If season_id differs or missing, we start fresh (0 points/wins for this season)
-            
-        new_points = current_points + winner_data.get('points', 0)
+        
+        new_points = current_points + offender.get('points', 0)
         new_wins = current_wins + 1
         new_rank = calculate_rank(new_points)
 
         await user_stats_ref.set({
-            "username": winner_data['username'],
+            "username": offender['username'],
             "season_id": current_season,
             "snitch_count": new_wins,
             "total_points": new_points,
             "current_rank": new_rank,
-            "last_title": winner_data['title'],
-            "last_win_date": winner_data['date_key']
+            "last_title": offender.get('title', '-'),
+            "last_win_date": date_key
         }, merge=True)
 
 def calculate_rank(points):
@@ -116,13 +152,13 @@ def calculate_rank(points):
     Calculates the Snitch Rank based on total points.
     Theme: Prison Caste (Reverse/Ironic)
     """
-    if points >= 200:
+    if points >= 1500:
         return "Масть Проткнутая 👑"
-    elif points >= 120:
+    elif points >= 750:
         return "Обиженный 🚽"
-    elif points >= 60:
+    elif points >= 250:
         return "Козёл 🐐"
-    elif points >= 20:
+    elif points >= 50:
         return "Шнырь 🧹"
     else:
         return "Порядочный 😐"

@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher, types
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_date, save_daily_winner
+from src.services.db import get_logs_for_date, save_daily_results, apply_weekly_decay, db
 from src.services.ai import analyze_daily_logs
 from datetime import datetime, timezone
 import logging
@@ -11,10 +12,41 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
+scheduler = AsyncIOScheduler()
 
 # Initialize Bot and Dispatcher
 # Bot is initialized globally here
 bot = Bot(token=settings.TELEGRAM_TOKEN)
+
+async def scheduled_weekly_decay():
+    """
+    Runs weekly decay for all active chats.
+    """
+    logging.info("Starting scheduled weekly decay...")
+    try:
+        # Assuming all docs in 'chats' are active chats
+        chats_ref = db.collection("chats")
+        async for chat_doc in chats_ref.stream():
+            chat_data = chat_doc.to_dict()
+            if not chat_data.get("active"):
+                continue
+                
+            chat_id = chat_doc.id
+            logging.info(f"Applying decay for chat {chat_id}")
+            await apply_weekly_decay(chat_id)
+            
+            # Announce
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="🧹 **Еженедельная Амнистия!**\n\nОчки всех грешников поделены на двое. У вас есть шанс исправиться (или нагрешить снова).",
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logging.error(f"Failed to send decay announcement to {chat_id}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error in scheduled decay: {e}")
 
 @app.on_event("startup")
 async def on_startup():
@@ -28,6 +60,11 @@ async def on_startup():
         types.BotCommand(command="report", description="Донести на ближнего (Reply)"),
     ]
     await bot.set_my_commands(commands)
+    
+    # Start Scheduler (Every Sunday at 23:59 UTC)
+    scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
+    scheduler.start()
+
 dp = Dispatcher()
 dp.include_router(router)
 
@@ -86,23 +123,54 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
         result['date_key'] = today_str
         
         # Save to DB
-        await save_daily_winner(chat_id, result)
+        await save_daily_results(chat_id, result)
         
         # Announce in chat
-        quote = result.get('quote')
+        offenders = result.get('offenders', [])
         
-        text = f"🚨 **ИТОГИ ДНЯ** 🚨\n\n" \
-               f"🏆 **Снитч дня:** {result.get('username', 'Аноним')}\n" \
-               f"👑 **Титул:** {result.get('title', 'Неизвестный')}\n\n"
-               
-        if quote:
-            text += f"💬 **Доказательство:**\n_{quote}_\n\n"
-            
-        text += f"📝 **Вердикт:** {result.get('reason', 'Нет описания')}"
+        if not offenders:
+            text = "✨ **ИТОГИ ДНЯ** ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
+        else:
+            text = "🚨 **ИТОГИ ДНЯ** 🚨\n\n"
+            i = 1
+            for off in offenders:
+                quote = off.get('quote')
+                text += f"{i}. 👤 **{off.get('username', 'Аноним')}** (+{off.get('points', 0)} pts)\n"
+                text += f"   🏆 **Титул:** {off.get('title', '-')}\n"
+                text += f"   📝 **Вердикт:** {off.get('reason', '-')}\n"
+                if quote:
+                    text += f"   💬 _{quote}_\n"
+                text += "\n"
+                i += 1
                
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
         
     return {"status": "analyzed", "result": result}
+
+@app.post("/weekly_decay")
+async def weekly_decay(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
+    """
+    Halve points for all users.
+    Triggered by Cloud Scheduler weekly.
+    """
+    if x_secret_token != settings.SECRET_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid token")
+        
+    data = await request.json()
+    chat_id = data.get("chat_id")
+    
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Missing chat_id")
+        
+    await apply_weekly_decay(chat_id)
+    
+    await bot.send_message(
+        chat_id=chat_id,
+        text="🧹 **Еженедельная Амнистия!**\n\nОчки всех грешников поделены на двое. У вас есть шанс исправиться (или нагрешить снова).",
+        parse_mode="Markdown"
+    )
+    
+    return {"status": "decayed"}
     
 @app.get("/")
 async def health_check():
