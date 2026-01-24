@@ -2,6 +2,10 @@ from google.cloud import firestore
 from datetime import datetime, timezone
 import logging
 
+def get_current_season_id():
+    """Returns the current season ID (YYYY-MM)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
 # Initialize Firestore Async Client
 # Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var or running in GCP
 db = firestore.AsyncClient()
@@ -75,17 +79,28 @@ async def save_daily_winner(chat_id: int, winner_data: dict):
         
         # Get current stats to calculate new rank (need a transaction ideally, but read-write is fine for low load)
         doc = await user_stats_ref.get()
+        current_season = get_current_season_id()
+        
         current_points = 0
+        current_wins = 0
+        
+        # Lazy Reset: Check if season changed
         if doc.exists:
-            current_points = doc.to_dict().get("total_points", 0)
+            data = doc.to_dict()
+            if data.get('season_id') == current_season:
+                current_points = data.get("total_points", 0)
+                current_wins = data.get("snitch_count", 0)
+            # If season_id differs or missing, we start fresh (0 points/wins for this season)
             
         new_points = current_points + winner_data.get('points', 0)
+        new_wins = current_wins + 1
         new_rank = calculate_rank(new_points)
 
         await user_stats_ref.set({
             "username": winner_data['username'],
-            "snitch_count": firestore.Increment(1),
-            "total_points": firestore.Increment(winner_data.get('points', 0)),
+            "season_id": current_season,
+            "snitch_count": new_wins,
+            "total_points": new_points,
             "current_rank": new_rank,
             "last_title": winner_data['title'],
             "last_win_date": winner_data['date_key']
@@ -96,13 +111,13 @@ def calculate_rank(points):
     Calculates the Snitch Rank based on total points.
     Theme: Prison Caste (Reverse/Ironic)
     """
-    if points >= 2500:
+    if points >= 200:
         return "Масть Проткнутая 👑"
-    elif points >= 1000:
+    elif points >= 120:
         return "Обиженный 🚽"
-    elif points >= 500:
+    elif points >= 60:
         return "Козёл 🐐"
-    elif points >= 100:
+    elif points >= 20:
         return "Шнырь 🧹"
     else:
         return "Порядочный 😐"

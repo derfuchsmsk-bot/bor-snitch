@@ -2,6 +2,7 @@ from aiogram import Router, types, F
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported
 from ..services.ai import validate_report
+from datetime import datetime, timezone
 import logging
 
 router = Router()
@@ -15,19 +16,38 @@ async def cmd_start(message: types.Message):
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     """
-    Show current snitch stats.
+    Show current season snitch stats.
     """
     # Fetch stats from Firestore
     chat_id = str(message.chat.id)
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
-    # Sort by total_points
-    docs = stats_ref.order_by("total_points", direction="DESCENDING").limit(10).stream()
+    # Get current season
+    current_season = datetime.now(timezone.utc).strftime("%Y-%m")
     
-    text = "🏆 **Топ Снитчей (Иерархия):**\n\n"
-    i = 1
+    # Fetch all and filter in python to handle "lazy reset" view
+    # (Users with old season_id shouldn't appear in current leaderboard)
+    docs = stats_ref.stream()
+    stats_list = []
+    
     async for doc in docs:
         data = doc.to_dict()
+        if data.get('season_id') == current_season:
+            stats_list.append(data)
+            
+    # Sort by total_points DESC
+    stats_list.sort(key=lambda x: x.get('total_points', 0), reverse=True)
+    
+    # Take top 10
+    top_stats = stats_list[:10]
+    
+    text = f"🏆 **Топ Снитчей (Сезон {current_season}):**\n\n"
+    
+    if not top_stats:
+        text += "Пока пусто. Сезон только начался! 🍂"
+    
+    i = 1
+    for data in top_stats:
         rank = data.get('current_rank', 'Порядочный 😐')
         points = data.get('total_points', 0)
         wins = data.get('snitch_count', 0)
@@ -72,8 +92,14 @@ async def cmd_status(message: types.Message):
 
     stats = await get_user_stats(message.chat.id, target_user.id)
     
+    current_season = datetime.now(timezone.utc).strftime("%Y-%m")
+    
+    # Check if stats are from current season
+    if stats and stats.get('season_id') != current_season:
+        stats = None # Treat as clean for this season
+
     if not stats:
-        await message.answer(f"👤 **{target_user.full_name}** пока чист перед законом. (0 очков)")
+        await message.answer(f"👤 **{target_user.full_name}** пока чист перед законом в этом сезоне. (0 очков)")
         return
 
     rank = stats.get('current_rank', 'Порядочный 😐')
