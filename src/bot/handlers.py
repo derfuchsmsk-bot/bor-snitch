@@ -55,7 +55,7 @@ async def cmd_stats(message: types.Message):
         
         text += f"{i}. {data.get('username', 'Unknown')} — {points} очков\n"
         text += f"   Масть: {rank}\n"
-        text += f"   Побед: {wins} | Последний титул: {data.get('last_title', '-')}\n\n"
+        text += f"   Снитч Дня: {wins} | Последняя малява: {data.get('last_title', '-')}\n\n"
         i += 1
         
     await message.answer(text, parse_mode="Markdown")
@@ -77,7 +77,7 @@ async def cmd_rules(message: types.Message):
         "🤡 Реакция клоуна = Токсичность\n"
         "👻 Игнор тега = Духота или Токсичность\n"
         "🧹 *Еженедельная Амнистия:* Каждое воскресенье очки делятся на 2.\n\n"
-        "👑 *Иерархия:*\n"
+        "👑 *Масти:*\n"
         "▫️ 0-49: Порядочный 😐\n"
         "▫️ 50-249: Шнырь 🧹\n"
         "▫️ 250-749: Козёл 🐐\n"
@@ -104,7 +104,7 @@ async def cmd_status(message: types.Message):
         stats = None # Treat as clean for this season
 
     if not stats:
-        await message.answer(f"👤 *{target_user.full_name}* пока чист перед законом в этом сезоне. (0 очков)")
+        await message.answer(f"👤 *{target_user.full_name}* без косяков. (0 очков)")
         return
 
     rank = stats.get('current_rank', 'Порядочный 😐')
@@ -114,10 +114,10 @@ async def cmd_status(message: types.Message):
     
     text = (
         f"👤 *Личное Дело:* {target_user.full_name}\n\n"
-        f"🏷️ *Звание:* {rank}\n"
+        f"🏷️ *Масть:* {rank}\n"
         f"⚖️ *Очки:* {points}\n"
-        f"🏆 *Побед (Снитч Дня):* {wins}\n"
-        f"🔖 *Последний титул:* {last_title}"
+        f"🏆 *Снитч Дня:* {wins}\n"
+        f"🔖 *Последняя малява:* {last_title}"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -127,7 +127,7 @@ async def cmd_report(message: types.Message):
     Report a message for being 'bad'.
     """
     if not message.reply_to_message or not message.reply_to_message.text:
-        await message.answer("❌ *Ошибка:* Используйте команду ответом на сообщение нарушителя.")
+        await message.answer("❌ *Ошибка:* Используйте команду ответом на сообщение снитча.")
         return
 
     reported_msg = message.reply_to_message
@@ -158,14 +158,14 @@ async def cmd_report(message: types.Message):
             f"✅ *Донос принят!*\n\n"
             f"📂 *Категория:* {category}\n"
             f"📝 *Вердикт:* {reason}\n"
-            f"👮‍♂️ _Администрация благодарит вас за бдительность._",
+            f"👮‍♂️ _Ну ты конечно козёл._",
             parse_mode="Markdown"
         )
     else:
         deny_reason = result.get("reason", "Not a violation") if result else "AI Error"
         await status_msg.edit_text(
             f"❌ *Отклонено.*\n\n"
-            f"Это не нарушение. Хватит спамить, или сам поедешь в карцер.\n"
+            f"Это не масть. Хватит спамить, ты уже ходишь под вопросом, клоун.\n"
             f"_(Причина: {deny_reason})_",
             parse_mode="Markdown"
         )

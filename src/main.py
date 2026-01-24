@@ -57,7 +57,7 @@ async def on_startup():
         types.BotCommand(command="status", description="Мое личное дело"),
         types.BotCommand(command="stats", description="Топ Снитчей"),
         types.BotCommand(command="rules", description="Кодекс Снитча"),
-        types.BotCommand(command="report", description="Донести на ближнего (Reply)"),
+        types.BotCommand(command="report", description="Донос (Reply)"),
     ]
     await bot.set_my_commands(commands)
     
@@ -141,7 +141,7 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
                     text += f"{i}. 👤 [{username}](tg://user?id={user_id}) (+{off.get('points', 0)} pts)\n"
                 else:
                     text += f"{i}. 👤 *{username}* (+{off.get('points', 0)} pts)\n"
-                text += f"   🏆 *Титул:* {off.get('title', '-')}\n"
+                text += f"   🏆 *Малява по этапу:* {off.get('title', '-')}\n"
                 text += f"   📝 *Вердикт:* {off.get('reason', '-')}\n"
                 if quote:
                     text += f"   💬 _{quote}_\n"
