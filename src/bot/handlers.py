@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements
 from ..services.ai import validate_report, transcribe_media
 from ..utils.text import escape
 from datetime import datetime, timezone
@@ -55,11 +55,10 @@ async def cmd_stats(message: types.Message):
         points = data.get('total_points', 0)
         wins = data.get('snitch_count', 0)
         username = escape(data.get('username', 'Unknown'))
-        last_title = escape(data.get('last_title', '-'))
         
         text += f"{i}. {username} — {points} очков\n"
         text += f"   Масть: {rank}\n"
-        text += f"   Снитч Дня: {wins} | Последняя малява: {last_title}\n\n"
+        text += f"   Снитч Дня: {wins}\n\n"
         i += 1
         
     await message.answer(text, parse_mode="HTML")
@@ -89,6 +88,41 @@ async def cmd_rules(message: types.Message):
     )
     await message.answer(text, parse_mode="HTML")
 
+@router.message(Command("agreements"))
+async def cmd_agreements(message: types.Message):
+    """
+    Show active agreements.
+    """
+    agreements = await get_active_agreements(message.chat.id)
+    
+    if not agreements:
+        await message.answer("🤝 <b>Договоренности:</b>\n\nНет действующих договоренностей. Живите спокойно... пока что.", parse_mode="HTML")
+        return
+
+    text = "🤝 <b>Действующие договоренности:</b>\n\n"
+    
+    for i, ag in enumerate(agreements, 1):
+        agreement_text = escape(ag.get('text', '???'))
+        
+        # Format date
+        created_at = ag.get('created_at')
+        date_str = "?"
+        if created_at:
+             # Assuming created_at is a datetime object or similar (Firestore Timestamp)
+             try:
+                 # Check if it has method strftime
+                 if hasattr(created_at, 'strftime'):
+                     date_str = created_at.strftime("%d.%m.%Y")
+                 else:
+                     # It might be a datetime string or something else, just cast to str
+                     date_str = str(created_at).split(' ')[0]
+             except Exception:
+                 date_str = "Unknown"
+
+        text += f"{i}. {agreement_text} <i>(от {date_str})</i>\n"
+
+    await message.answer(text, parse_mode="HTML")
+
 @router.message(Command("status", "me"))
 async def cmd_status(message: types.Message):
     """
@@ -113,14 +147,12 @@ async def cmd_status(message: types.Message):
     rank = escape(stats.get('current_rank', 'Порядочный 😐'))
     points = stats.get('total_points', 0)
     wins = stats.get('snitch_count', 0)
-    last_title = escape(stats.get('last_title', 'Нет'))
     
     text = (
         f"👤 <b>Личное Дело:</b> {escape(target_user.full_name)}\n\n"
         f"🏷️ <b>Масть:</b> {rank}\n"
         f"⚖️ <b>Очки:</b> {points}\n"
-        f"🏆 <b>Снитч Дня:</b> {wins}\n"
-        f"🔖 <b>Последняя малява:</b> {last_title}"
+        f"🏆 <b>Снитч Дня:</b> {wins}"
     )
     await message.answer(text, parse_mode="HTML")
 

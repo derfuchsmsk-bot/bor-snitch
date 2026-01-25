@@ -209,7 +209,6 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
             "snitch_count": new_wins,
             "total_points": new_points,
             "current_rank": new_rank,
-            "last_title": offender.get('title', '-'),
             "last_win_date": date_key
         }, merge=True)
 

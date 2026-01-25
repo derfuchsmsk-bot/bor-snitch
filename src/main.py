@@ -84,14 +84,12 @@ async def perform_chat_analysis(chat_id: str):
                 quote = off.get('quote')
                 username = escape(off.get('username', 'Аноним'))
                 user_id = off.get('user_id')
-                title = escape(off.get('title', '-'))
                 reason = escape(off.get('reason', '-'))
                 
                 if user_id:
                     text += f"{i}. 👤 <a href='tg://user?id={user_id}'>{username}</a> (+{off.get('points', 0)} pts)\n"
                 else:
                     text += f"{i}. 👤 <b>{username}</b> (+{off.get('points', 0)} pts)\n"
-                text += f"   🏆 <b>Малява по этапу:</b> {title}\n"
                 text += f"   📝 <b>Вердикт:</b> {reason}\n"
                 if quote:
                     text += f"   💬 <i>{escape(quote)}</i>\n"
@@ -169,6 +167,7 @@ async def on_startup():
         types.BotCommand(command="stats", description="Топ Снитчей"),
         types.BotCommand(command="rules", description="Кодекс Снитча"),
         types.BotCommand(command="report", description="Донос (Reply)"),
+        types.BotCommand(command="agreements", description="Список договоренностей"),
     ]
     await bot.set_my_commands(commands)
     
