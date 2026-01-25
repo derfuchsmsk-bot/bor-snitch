@@ -130,6 +130,28 @@ async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: date
     logs.sort(key=lambda x: x['timestamp'])
     return logs
 
+async def get_recent_messages(chat_id: int, before_timestamp: datetime, limit: int = 5):
+    """
+    Fetches the last N messages before a specific timestamp for context.
+    """
+    chat_ref = db.collection("chats").document(str(chat_id))
+    messages_ref = chat_ref.collection("messages")
+    
+    # Query: timestamp < before_timestamp, ORDER BY timestamp DESC, LIMIT limit
+    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", "<", before_timestamp))\
+                        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                        .limit(limit)
+    
+    logs = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data['message_id'] = doc.id
+        logs.append(data)
+        
+    # Reverse to return in chronological order
+    logs.reverse()
+    return logs
+
 async def save_daily_results(chat_id: int, analysis_result: dict):
     """
     Saves the result of the daily analysis (list of offenders).

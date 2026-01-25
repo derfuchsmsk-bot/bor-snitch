@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages
 from ..services.ai import validate_report, transcribe_media
 from ..utils.text import escape
 from datetime import datetime, timezone
@@ -72,9 +72,9 @@ async def cmd_rules(message: types.Message):
         "📜 <b>Кодекс Снитча</b>\n\n"
         "За что начисляются очки (суммируются за день):\n"
         "🔹 <b>Нытье</b> — 10 pts\n"
-        "🔹 <b>Духота/Игнор</b> — 15 pts\n"
+        "🔹 <b>Духота</b> — 15 pts\n"
         "🔹 <b>Токсичность</b> — 25 pts\n"
-        "🔹 <b>Снитчевание</b> — 50 pts\n\n"
+        "🔹 <b>Снитчевание (Игнор/Предательство)</b> — 50 pts\n\n"
         "⚠️ <b>Особые правила:</b>\n"
         "🤡 Реакция клоуна = Токсичность\n"
         "👻 Игнор тега = Духота или Токсичность\n"
@@ -174,12 +174,16 @@ async def cmd_report(message: types.Message):
 
     status_msg = await message.answer("🕵️‍♂️ <b>Анализ доноса...</b>", parse_mode="HTML")
     
+    # Fetch context (5 messages before the reported one)
+    context_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=5)
+    
     # Validate with AI
-    result = await validate_report(reported_msg.text)
+    result = await validate_report(reported_msg.text, context_msgs)
     
     if result and result.get("valid"):
         category = escape(result.get("category", "Unspecified"))
         reason = escape(result.get("reason", "Violation detected"))
+        points = result.get("points", 0)
         
         # Mark in DB
         await mark_message_reported(
@@ -191,9 +195,9 @@ async def cmd_report(message: types.Message):
         
         await status_msg.edit_text(
             f"✅ <b>Донос принят!</b>\n\n"
-            f"📂 <b>Категория:</b> {category}\n"
+            f"📂 <b>Категория:</b> {category} (~{points} pts)\n"
             f"📝 <b>Вердикт:</b> {reason}\n"
-            f"👮‍♂️ <i>Ну ты конечно козёл.</i>",
+            f"⚖️ <i>Очки будут начислены при ночном пересчете.</i>",
             parse_mode="HTML"
         )
     else:
