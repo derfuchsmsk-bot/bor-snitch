@@ -220,7 +220,7 @@ async def transcribe_media(file_data: bytes, mime_type: str) -> str:
     """
     Transcribes voice or video using Gemini Multimodal.
     """
-    model = GenerativeModel("gemini-3-flash-preview") # Use stable flash for multimodal
+    model = GenerativeModel("gemini-3-pro-preview") # Use stable flash for multimodal
     
     prompt = "Transcribe this audio/video verbatim. Return only the text in Russian (or original language if not Russian)."
     
