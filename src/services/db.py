@@ -55,9 +55,9 @@ async def save_agreement(chat_id: int, agreement: dict):
     
     data = agreement.copy()
     data['status'] = 'active'
-    # Ensure timestamp is set
-    if 'created_at' not in data:
-        data['created_at'] = firestore.SERVER_TIMESTAMP
+    # Ensure timestamp is set to SERVER_TIMESTAMP to avoid AI hallucinated dates
+    # or invalid string formats. We trust the agreement is being created "now" (during analysis).
+    data['created_at'] = firestore.SERVER_TIMESTAMP
         
     await coll_ref.add(data)
 

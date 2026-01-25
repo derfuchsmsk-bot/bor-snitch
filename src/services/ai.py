@@ -150,10 +150,11 @@ async def validate_report(text):
         logging.error(f"Error during report validation: {e}")
         return {"valid": False, "reason": "AI Error"}
 
-async def analyze_daily_logs(logs, active_agreements=None):
+async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
     """
     Sends chat logs to Gemini and returns the winner analysis.
     active_agreements: list of dicts {text, created_at, ...}
+    date_str: "YYYY-MM-DD" of the analysis day (to help AI with context)
     """
     if not logs:
         return None
@@ -202,13 +203,17 @@ async def analyze_daily_logs(logs, active_agreements=None):
              agreements_text += f"- {ag['text']} (от {date_str})\n"
 
     prompt = f"""
+    СЕГОДНЯШНЯЯ ДАТА: {date_str or 'Unknown'}
+    
     ACTIVE AGREEMENTS (Проверь на нарушения):
     {agreements_text}
     
     Вот лог чата за сегодня:
     {chat_history}
     
-    Определи Снитча Дня согласно твоей системной инструкции. Ищи нарушения договоренностей и новые обещания. Верни ТОЛЬКО JSON.
+    Определи Снитча Дня согласно твоей системной инструкции. Ищи нарушения договоренностей и новые обещания.
+    ВАЖНО: Для новых договоренностей (new_agreements) в поле "created_at" используй СЕГОДНЯШНЮЮ ДАТУ ({date_str}).
+    Верни ТОЛЬКО JSON.
     """
     
     try:

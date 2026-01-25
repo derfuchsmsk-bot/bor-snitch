@@ -58,7 +58,7 @@ async def perform_chat_analysis(chat_id: str):
         await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов)")
         return {"status": "no logs"}
         
-    result = await analyze_daily_logs(logs, active_agreements=active_agreements)
+    result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str)
     
     if result:
         # Add date info
