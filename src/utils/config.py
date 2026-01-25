@@ -7,6 +7,6 @@ class Settings(BaseSettings):
     GCP_LOCATION: str = "us-central1"
     SECRET_TOKEN: str
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

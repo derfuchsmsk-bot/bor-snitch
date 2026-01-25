@@ -1,1 +1,6 @@
 snitch-bor/
+.env
+archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified.txt
+archive/result.json
+src/scripts/process_archive.py
+src/scripts/convert_chat_to_json.py
