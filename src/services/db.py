@@ -41,7 +41,9 @@ async def log_message(message, override_text=None):
         "reply_to": message.reply_to_message.message_id if message.reply_to_message else None
     }
     
+    logging.debug(f"Writing message {msg_id} to Firestore (Chat: {chat_id})...")
     await doc_ref.set(data)
+    logging.debug(f"Message {msg_id} written successfully.")
 
 async def save_agreement(chat_id: int, agreement: dict):
     """
@@ -294,4 +296,6 @@ async def log_reaction(chat_id: int, user_id: int, username: str, message_id: in
         "target_msg_id": message_id
     }
     
+    logging.debug(f"Writing reaction {reaction_id} to Firestore...")
     await doc_ref.set(data)
+    logging.debug(f"Reaction {reaction_id} written successfully.")

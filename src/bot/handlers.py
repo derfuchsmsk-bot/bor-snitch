@@ -191,6 +191,7 @@ async def handle_reactions(reaction: MessageReactionUpdated):
         
     # Log each added emoji
     for emoji in added:
+        logging.debug(f"Processing reaction: {emoji} for message {reaction.message_id}")
         await log_reaction(
             chat_id=reaction.chat.id,
             user_id=reaction.user.id,
@@ -211,27 +212,34 @@ async def handle_messages(message: types.Message):
     if message.voice or message.video_note:
         try:
             file_id = message.voice.file_id if message.voice else message.video_note.file_id
+            logging.debug(f"Starting processing for media file_id: {file_id}")
+            
             file_info = await message.bot.get_file(file_id)
             
             # Download to memory
             file_io = BytesIO()
             await message.bot.download_file(file_info.file_path, file_io)
             file_bytes = file_io.getvalue()
+            logging.debug(f"Downloaded media file. Size: {len(file_bytes)} bytes")
             
             mime_type = "audio/ogg" if message.voice else "video/mp4"
             
             # Transcribe
+            logging.debug(f"Transcribing media ({mime_type})...")
             transcription = await transcribe_media(file_bytes, mime_type)
+            logging.debug(f"Transcription result: {transcription[:100]}...")
             
             prefix = "[VOICE]" if message.voice else "[VIDEO NOTE]"
             override_text = f"{prefix} {transcription}"
             
         except Exception as e:
-            logging.error(f"Failed to transcribe media: {e}")
+            logging.error(f"Failed to transcribe media: {e}", exc_info=True)
             override_text = f"[{'VOICE' if message.voice else 'VIDEO NOTE'}] (Transcription Failed)"
 
     # Log to Firestore
     try:
+        logging.debug(f"Logging message {message.message_id} to DB (override_text={bool(override_text)})...")
         await log_message(message, override_text=override_text)
+        logging.debug(f"Message {message.message_id} logged successfully.")
     except Exception as e:
-        logging.error(f"Failed to log message: {e}")
+        logging.error(f"Failed to log message: {e}", exc_info=True)

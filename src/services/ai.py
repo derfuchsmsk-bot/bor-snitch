@@ -7,7 +7,7 @@ from datetime import timedelta, timezone
 
 # Initialize Vertex AI
 # We assume the environment is authenticated (via Cloud Run service account)
-vertexai.init(project=settings.GCP_PROJECT_ID, location=settings.GCP_LOCATION)
+vertexai.init(project=settings.GCP_PROJECT_ID, location=settings.GCP_LOCATION, api_transport="grpc")
 
 SYSTEM_PROMPT = """
 Ты — циничный, саркастичный и наблюдательный судья в чате друзей. Твоя задача — прочитать историю переписки за день, выбрать "Снитча дня" (Snitch of the Day) и классифицировать его проступок для начисления очков.
