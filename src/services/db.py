@@ -10,7 +10,7 @@ def get_current_season_id():
 # Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var or running in GCP
 db = firestore.AsyncClient()
 
-async def log_message(message):
+async def log_message(message, override_text=None):
     """
     Logs a telegram message to Firestore.
     Structure: chats/{chat_id}/messages/{msg_id}
@@ -24,7 +24,7 @@ async def log_message(message):
     
     doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
     
-    text_content = message.text or message.caption
+    text_content = override_text or message.text or message.caption
     if not text_content and message.sticker:
         text_content = f"[STICKER] {message.sticker.emoji or 'Unknown'}"
 

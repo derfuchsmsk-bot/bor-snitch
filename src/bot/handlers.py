@@ -2,10 +2,11 @@ from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id
-from ..services.ai import validate_report
+from ..services.ai import validate_report, transcribe_media
 from ..utils.text import escape
 from datetime import datetime, timezone
 import logging
+from io import BytesIO
 
 router = Router()
 
@@ -73,7 +74,6 @@ async def cmd_rules(message: types.Message):
         "За что начисляются очки (суммируются за день):\n"
         "🔹 <b>Нытье</b> — 10 pts\n"
         "🔹 <b>Духота/Игнор</b> — 15 pts\n"
-        "🔹 <b>Кринж</b> — 20 pts\n"
         "🔹 <b>Токсичность</b> — 25 pts\n"
         "🔹 <b>Снитчевание</b> — 50 pts\n\n"
         "⚠️ <b>Особые правила:</b>\n"
@@ -200,13 +200,38 @@ async def handle_reactions(reaction: MessageReactionUpdated):
             timestamp=reaction.date
         )
 
-@router.message(F.text | F.sticker)
+@router.message(F.text | F.sticker | F.voice | F.video_note)
 async def handle_messages(message: types.Message):
     """
-    Catch all text messages and stickers and log them.
+    Catch all text messages, stickers, voices, and video notes; log them.
     """
+    override_text = None
+
+    # Handle Voice & Video Notes
+    if message.voice or message.video_note:
+        try:
+            file_id = message.voice.file_id if message.voice else message.video_note.file_id
+            file_info = await message.bot.get_file(file_id)
+            
+            # Download to memory
+            file_io = BytesIO()
+            await message.bot.download_file(file_info.file_path, file_io)
+            file_bytes = file_io.getvalue()
+            
+            mime_type = "audio/ogg" if message.voice else "video/mp4"
+            
+            # Transcribe
+            transcription = await transcribe_media(file_bytes, mime_type)
+            
+            prefix = "[VOICE]" if message.voice else "[VIDEO NOTE]"
+            override_text = f"{prefix} {transcription}"
+            
+        except Exception as e:
+            logging.error(f"Failed to transcribe media: {e}")
+            override_text = f"[{'VOICE' if message.voice else 'VIDEO NOTE'}] (Transcription Failed)"
+
     # Log to Firestore
     try:
-        await log_message(message)
+        await log_message(message, override_text=override_text)
     except Exception as e:
         logging.error(f"Failed to log message: {e}")
