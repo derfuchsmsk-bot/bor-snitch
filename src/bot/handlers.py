@@ -216,7 +216,7 @@ async def cmd_report(message: types.Message):
         deny_reason = escape(result.get("reason", "Not a violation") if result else "AI Error")
         await status_msg.edit_text(
             f"❌ <b>Отклонено.</b>\n\n"
-            f"Это не масть. Хватит спамить, ты уже ходишь под вопросом, клоун.\n"
+            f"Это не масть. Хватит спамить, ты уже ходишь под вопросом, клоун 🤡🤡🤡\n"
             f"<i>(Причина: {deny_reason})</i>",
             parse_mode="HTML"
         )
