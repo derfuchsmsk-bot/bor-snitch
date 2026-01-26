@@ -63,30 +63,26 @@ async def cmd_stats(message: types.Message):
         if not username.startswith("@"):
              username = f"@{username}"
         
-        # Add achievements display
-        achievements = data.get('achievements', [])
-        ach_display = ""
-        
-        titles = []
-        for ach in achievements:
-            if isinstance(ach, dict):
-                # We can show icon + title or just title. Request said "fully show achievement".
-                # Let's show "Icon Title" if icon exists, or just Title.
-                icon = ach.get('icon', '')
-                title = ach.get('title', '')
-                if title:
-                    titles.append(f"{icon} {title}".strip())
-            elif isinstance(ach, str):
-                titles.append(ach)
-        
-        if titles:
-            ach_display = " // " + ", ".join(titles)
-
-        username += ach_display
-        
         text += f"{i}. {username} — {points} очков\n"
         text += f"   Масть: {rank}\n"
-        text += f"   Снитч Дня: {wins}\n\n"
+        
+        # Achievements in body
+        achievements = data.get('achievements', [])
+        if achievements:
+            ach_list = []
+            for ach in achievements:
+                if isinstance(ach, dict):
+                    icon = ach.get('icon', '')
+                    title = ach.get('title', '')
+                    if title:
+                        ach_list.append(f"{title}{icon}")
+                elif isinstance(ach, str):
+                    ach_list.append(ach)
+            
+            if ach_list:
+                text += f"   🏅 Ачивки: {', '.join(ach_list)}\n"
+
+        text += "\n"
         i += 1
         
     await message.answer(text, parse_mode="HTML")
@@ -191,8 +187,7 @@ async def cmd_status(message: types.Message):
     text = (
         f"👤 <b>Личное Дело:</b> {display_name}\n\n"
         f"🏷️ <b>Масть:</b> {rank}\n"
-        f"⚖️ <b>Очки:</b> {points}\n"
-        f"🏆 <b>Снитч Дня:</b> {wins}"
+        f"⚖️ <b>Очки:</b> {points}"
     )
 
     if achievements:
