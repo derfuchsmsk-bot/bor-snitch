@@ -143,8 +143,15 @@ async def cmd_status(message: types.Message):
     current_season = get_current_season_id()
     
     # Check if stats are from current season
-    if stats and stats.get('season_id') != current_season:
-        stats = None # Treat as clean for this season
+    achievements = []
+    if stats:
+        achievements = stats.get('achievements', [])
+        if stats.get('season_id') != current_season:
+            # Reset seasonal stats for display, but keep achievements
+            # We modify a copy or just set keys on the dict since it's transient
+            stats['total_points'] = 0
+            stats['snitch_count'] = 0
+            stats['current_rank'] = 'Порядочный 😐'
 
     if not stats:
         await message.answer(f"👤 <b>{escape(target_user.full_name)}</b> без косяков. (0 очков)", parse_mode="HTML")
@@ -160,6 +167,21 @@ async def cmd_status(message: types.Message):
         f"⚖️ <b>Очки:</b> {points}\n"
         f"🏆 <b>Снитч Дня:</b> {wins}"
     )
+
+    if achievements:
+        text += "\n\n🏅 <b>Достижения:</b>\n"
+        for ach in achievements:
+            if isinstance(ach, str):
+                text += f"• {escape(ach)}\n"
+            elif isinstance(ach, dict):
+                icon = ach.get('icon', '🎖')
+                title = escape(ach.get('title', 'Unknown'))
+                description = escape(ach.get('description', ''))
+                text += f"{icon} <b>{title}</b>"
+                if description:
+                    text += f" — <i>{description}</i>"
+                text += "\n"
+
     await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("report"))
