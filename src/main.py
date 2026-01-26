@@ -109,6 +109,9 @@ async def perform_chat_analysis(chat_id: str):
             for off in offenders:
                 quote = off.get('quote')
                 username = escape(off.get('username', 'Аноним'))
+                if not username.startswith("@"):
+                     username = f"@{username}"
+
                 user_id = off.get('user_id')
                 reason = escape(off.get('reason', '-'))
                 

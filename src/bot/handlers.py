@@ -60,6 +60,8 @@ async def cmd_stats(message: types.Message):
         points = data.get('total_points', 0)
         wins = data.get('snitch_count', 0)
         username = escape(data.get('username', 'Unknown'))
+        if not username.startswith("@"):
+             username = f"@{username}"
         
         # Add achievements display
         achievements = data.get('achievements', [])
@@ -182,8 +184,12 @@ async def cmd_status(message: types.Message):
     points = stats.get('total_points', 0)
     wins = stats.get('snitch_count', 0)
     
+    display_name = escape(target_user.full_name)
+    if target_user.username:
+        display_name = f"@{target_user.username}"
+
     text = (
-        f"👤 <b>Личное Дело:</b> {escape(target_user.full_name)}\n\n"
+        f"👤 <b>Личное Дело:</b> {display_name}\n\n"
         f"🏷️ <b>Масть:</b> {rank}\n"
         f"⚖️ <b>Очки:</b> {points}\n"
         f"🏆 <b>Снитч Дня:</b> {wins}"
