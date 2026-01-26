@@ -29,6 +29,18 @@ async def log_message(message, override_text=None):
     if not text_content and message.sticker:
         text_content = f"[STICKER] {message.sticker.emoji or 'Unknown'}"
 
+    # Detect forwarded messages to prevent false positive attribution
+    is_forward = False
+    # Check forward_origin (Bot API 7.0+) or legacy fields
+    if getattr(message, 'forward_origin', None) or \
+       getattr(message, 'forward_date', None) or \
+       getattr(message, 'forward_from', None) or \
+       getattr(message, 'forward_from_chat', None):
+        is_forward = True
+
+    if is_forward and text_content:
+        text_content = f"[FORWARD] {text_content}"
+
     if not text_content:
         return # Skip non-text messages for now
         
