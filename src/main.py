@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db, get_active_agreements, save_agreement
+from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db, get_active_agreements, save_agreement, check_afk_users
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
 from datetime import datetime, timezone, timedelta, time
@@ -53,12 +53,38 @@ async def perform_chat_analysis(chat_id: str):
     
     logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
     
-    if not logs:
-        logging.info("No logs found.")
-        await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов)")
+    # 1. AI Analysis (if logs exist)
+    ai_result = None
+    if logs:
+        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str)
+    
+    # 2. AFK Analysis (Always run)
+    afk_offenders = await check_afk_users(chat_id)
+    
+    # If nothing happened at all
+    if not logs and not afk_offenders:
+        logging.info("No logs and no AFK violations.")
+        await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов и нарушений)")
         return {"status": "no logs"}
+
+    # Prepare final result structure
+    final_result = {
+        "offenders": [],
+        "new_agreements": []
+    }
+    
+    if ai_result:
+        final_result["offenders"].extend(ai_result.get("offenders", []))
+        final_result["new_agreements"].extend(ai_result.get("new_agreements", []))
         
-    result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str)
+    # Append AFK offenders
+    final_result["offenders"].extend(afk_offenders)
+    
+    # Proceed if we have ANY result (offenders or new agreements)
+    # Even if list is empty, we proceed to save "empty" result if we had logs (to mark day as processed)
+    # But if no logs and we are here, it means we have AFK offenders.
+    
+    result = final_result
     
     if result:
         # Add date info

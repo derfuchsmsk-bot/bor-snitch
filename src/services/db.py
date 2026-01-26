@@ -45,6 +45,17 @@ async def log_message(message, override_text=None):
     await doc_ref.set(data)
     logging.debug(f"Message {msg_id} written successfully.")
 
+    # Update user's last active date
+    try:
+        user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
+        await user_stats_ref.set({
+            "username": message.from_user.username or message.from_user.first_name,
+            "last_active_date": message.date,
+            "full_name": message.from_user.full_name # Ensure name is up to date
+        }, merge=True)
+    except Exception as e:
+        logging.error(f"Failed to update last_active_date for user {user_id}: {e}")
+
 async def save_agreement(chat_id: int, agreement: dict):
     """
     Saves a new agreement found by AI.
@@ -75,6 +86,71 @@ async def get_active_agreements(chat_id: int):
         data['id'] = doc.id
         agreements.append(data)
     return agreements
+
+async def check_afk_users(chat_id: int):
+    """
+    Checks for users who haven't written for 2+ days.
+    Returns list of offenders.
+    """
+    chat_id = str(chat_id)
+    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
+    
+    now = datetime.now(timezone.utc)
+    offenders = []
+    
+    current_season = get_current_season_id()
+    
+    async for doc in stats_ref.stream():
+        data = doc.to_dict()
+        last_active = data.get('last_active_date')
+        
+        if not last_active:
+            # Skip if no record (e.g. legacy data without date, or just created)
+            # We assume they are active to avoid false positives during migration
+            continue
+            
+        # Ensure last_active is datetime
+        if not hasattr(last_active, 'timestamp'):
+            continue
+            
+        # Check difference
+        # Normalize to avoid TZ issues (comparing UTC to UTC)
+        if last_active.tzinfo is None:
+             last_active = last_active.replace(tzinfo=timezone.utc)
+             
+        diff = now - last_active
+        days_inactive = diff.days
+        
+        if days_inactive >= 2:
+            # Penalty Logic
+            # Base: 50. Progressive: +50 for each extra day.
+            # Day 2: 50
+            # Day 3: 100
+            # Day 4: 150
+            
+            extra_days = days_inactive - 2
+            points = 50 + (extra_days * 50)
+            
+            # Cap at some reasonable amount? No, let them suffer.
+            
+            # We need to make sure we don't apply it multiple times for the same "inactive streak" in a weird way?
+            # But this runs daily.
+            # If I was inactive yesterday (Day 2), I got 50 pts.
+            # Today (Day 3), I am still inactive. I get 100 pts.
+            # Yes, that's progressive pain.
+            
+            username = data.get('username', 'Ghost')
+            
+            offenders.append({
+                "user_id": doc.id,
+                "username": username,
+                "category": "Snitching", # AFK is a form of betrayal
+                "reason": f"AFK в чате: {days_inactive} дн. молчания",
+                "points": points,
+                "quote": None
+            })
+            
+    return offenders
 
 async def apply_weekly_decay(chat_id: int):
     """
