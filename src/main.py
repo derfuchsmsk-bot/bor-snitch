@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_decay, db, get_active_agreements, save_agreement, check_afk_users
+from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
 from datetime import datetime, timezone, timedelta, time
@@ -155,9 +155,9 @@ async def scheduled_daily_analysis():
 
 async def scheduled_weekly_decay():
     """
-    Runs weekly decay for all active chats.
+    Runs weekly amnesty for all active chats.
     """
-    logging.info("Starting scheduled weekly decay...")
+    logging.info("Starting scheduled weekly amnesty...")
     try:
         # Assuming all docs in 'chats' are active chats
         chats_ref = db.collection("chats")
@@ -167,21 +167,21 @@ async def scheduled_weekly_decay():
                 continue
                 
             chat_id = chat_doc.id
-            logging.info(f"Applying decay for chat {chat_id}")
-            await apply_weekly_decay(chat_id)
+            logging.info(f"Applying amnesty for chat {chat_id}")
+            await apply_weekly_amnesty(chat_id)
             
             # Announce
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="🧹 <b>Еженедельная Амнистия!</b>\n\nОчки всех моргунчиков поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
+                    text="🧹 <b>Еженедельная Амнистия!</b>\n\nСписана половина очков, набранных за эту неделю. Живите пока.",
                     parse_mode="HTML"
                 )
             except Exception as e:
-                logging.error(f"Failed to send decay announcement to {chat_id}: {e}")
+                logging.error(f"Failed to send amnesty announcement to {chat_id}: {e}")
                 
     except Exception as e:
-        logging.error(f"Error in scheduled decay: {e}")
+        logging.error(f"Error in scheduled amnesty: {e}")
 
 @app.on_event("startup")
 async def on_startup():
@@ -247,7 +247,7 @@ async def analyze_daily(request: Request, x_secret_token: str = Header(None, ali
 @app.post("/weekly_decay")
 async def weekly_decay(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
     """
-    Halve points for all users.
+    Halve points for all users based on weekly accumulation.
     Triggered by Cloud Scheduler weekly.
     """
     if x_secret_token != settings.SECRET_TOKEN:
@@ -259,15 +259,15 @@ async def weekly_decay(request: Request, x_secret_token: str = Header(None, alia
     if not chat_id:
         raise HTTPException(status_code=400, detail="Missing chat_id")
         
-    await apply_weekly_decay(chat_id)
+    await apply_weekly_amnesty(chat_id)
     
     await bot.send_message(
         chat_id=chat_id,
-        text="🧹 <b>Еженедельная Амнистия!</b>\n\nОчки всех мастюганов поделены на двое. У вас есть шанс исправиться (или замаститься снова).",
+        text="🧹 <b>Еженедельная Амнистия!</b>\n\nСписана половина очков, набранных за эту неделю. Живите пока.",
         parse_mode="HTML"
     )
     
-    return {"status": "decayed"}
+    return {"status": "amnesty_applied"}
     
 @app.get("/")
 async def health_check():

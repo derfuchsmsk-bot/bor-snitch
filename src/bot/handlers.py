@@ -2,13 +2,18 @@ from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_message
-from ..services.ai import validate_report, transcribe_media
+from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
+from ..utils.game_config import config
 from datetime import datetime, timezone
 import logging
 from io import BytesIO
+import random
 
 router = Router()
+
+# Global state for cynical comment cooldowns (chat_id -> datetime)
+last_comment_time = {}
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -39,7 +44,7 @@ async def cmd_stats(message: types.Message):
             stats_list.append(data)
             
     # Sort by total_points DESC
-    stats_list.sort(key=lambda x: x.get('total_points', 0), reverse=True)
+    stats_list.sort(key=lambda x: int(x.get('total_points', 0)), reverse=True)
     
     # Take top 10
     top_stats = stats_list[:10]
@@ -71,21 +76,21 @@ async def cmd_rules(message: types.Message):
     text = (
         "📜 <b>Кодекс Снитча</b>\n\n"
         "За что начисляются очки (суммируются за день):\n"
-        "🔹 <b>Нытье</b> — 10 pts\n"
-        "🔹 <b>Духота</b> — 15 pts\n"
-        "🔹 <b>Токсичность</b> — 25 pts\n"
-        "🔹 <b>Снитчевание (Игнор/Предательство)</b> — 50 pts\n"
-        "🔹 <b>AFK (Молчанка)</b> — 50+ pts (2 дня тишины = 50, далее +50 за день)\n\n"
+        f"🔹 <b>Нытье</b> — {config.POINTS_WHINING} pts\n"
+        f"🔹 <b>Духота</b> — {config.POINTS_STIFFNESS} pts\n"
+        f"🔹 <b>Токсичность</b> — {config.POINTS_TOXICITY} pts\n"
+        f"🔹 <b>Снитчевание (Игнор/Предательство)</b> — {config.POINTS_SNITCHING} pts\n"
+        f"🔹 <b>AFK (Молчанка)</b> — {config.POINTS_AFK_BASE}+ pts (2 дня тишины = 50, далее +50 за день)\n\n"
         "⚠️ <b>Особые правила:</b>\n"
         "🤡 Реакция клоуна = Токсичность\n"
         "👻 Игнор тега = Духота или Токсичность\n"
-        "🧹 <b>Еженедельная Амнистия:</b> Каждое воскресенье очки делятся на 2.\n\n"
+        "🧹 <b>Еженедельная Амнистия:</b> Каждое воскресенье очки за неделю делятся на 2.\n\n"
         "👑 <b>Масти:</b>\n"
-        "▫️ 0-49: Порядочный 😐\n"
-        "▫️ 50-249: Шнырь 🧹\n"
-        "▫️ 250-749: Козёл 🐐\n"
-        "▫️ 750-1499: Обиженный 🚽\n"
-        "▫️ 1500+: Масть Проткнутая 👑"
+        f"▫️ {config.RANK_NORMAL[0]}-{config.RANK_NORMAL[1]}: Порядочный 😐\n"
+        f"▫️ {config.RANK_SHNYR[0]}-{config.RANK_SHNYR[1]}: Шнырь 🧹\n"
+        f"▫️ {config.RANK_GOAT[0]}-{config.RANK_GOAT[1]}: Козёл 🐐\n"
+        f"▫️ {config.RANK_OFFENDED[0]}-{config.RANK_OFFENDED[1]}: Обиженный 🚽\n"
+        f"▫️ {config.RANK_PIERCED[0]}+: Масть Проткнутая 👑"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -176,8 +181,12 @@ async def cmd_report(message: types.Message):
         if stored_msg:
              target_text = stored_msg.get('text')
     
+    # Check for sticker
+    if not target_text and reported_msg.sticker:
+        target_text = f"[STICKER] {reported_msg.sticker.emoji or 'Unknown'} (ID: {reported_msg.sticker.file_unique_id})"
+    
     if not target_text:
-        await message.answer("❌ <b>Ошибка:</b> Сообщение не содержит текста или еще не обработано (для голосовых).", parse_mode="HTML")
+        await message.answer("❌ <b>Ошибка:</b> Сообщение не содержит текста, стикера или еще не обработано.", parse_mode="HTML")
         return
     
     # Don't let users report themselves (optional, but logical)
@@ -187,8 +196,8 @@ async def cmd_report(message: types.Message):
 
     status_msg = await message.answer("🕵️‍♂️ <b>Анализ доноса...</b>", parse_mode="HTML")
     
-    # Fetch context (5 messages before the reported one)
-    context_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=5)
+    # Fetch context (Use limit from config)
+    context_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_CONTEXT_LIMIT)
     
     # Validate with AI
     result = await validate_report(target_text, context_msgs)
@@ -254,6 +263,7 @@ async def handle_reactions(reaction: MessageReactionUpdated):
 async def handle_messages(message: types.Message):
     """
     Catch all text messages, stickers, voices, and video notes; log them.
+    Also handles random cynical comments.
     """
     override_text = None
 
@@ -284,6 +294,10 @@ async def handle_messages(message: types.Message):
         except Exception as e:
             logging.error(f"Failed to transcribe media: {e}", exc_info=True)
             override_text = f"[{'VOICE' if message.voice else 'VIDEO NOTE'}] (Transcription Failed)"
+    
+    # Handle Stickers
+    if message.sticker:
+         override_text = f"[STICKER] {message.sticker.emoji or 'Unknown'} (File ID: {message.sticker.file_unique_id})"
 
     # Log to Firestore
     try:
@@ -292,3 +306,26 @@ async def handle_messages(message: types.Message):
         logging.debug(f"Message {message.message_id} logged successfully.")
     except Exception as e:
         logging.error(f"Failed to log message: {e}", exc_info=True)
+
+    # Random Cynical Comment Logic
+    # Only for text messages, not commands, and not if we just handled media/stickers (unless we want to comment on them too? Let's stick to text for now)
+    if message.text and not message.text.startswith('/'):
+        try:
+            if random.random() < config.CYNICAL_COMMENT_CHANCE:
+                chat_id = message.chat.id
+                now = datetime.now()
+                last_time = last_comment_time.get(chat_id)
+                
+                # Check cooldown
+                if not last_time or (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS:
+                    # Generate comment
+                    # Get small context for immediate reply
+                    context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
+                    comment = await generate_cynical_comment(context_msgs, message.text)
+                    
+                    if comment:
+                        await message.reply(comment)
+                        last_comment_time[chat_id] = now
+                        logging.info(f"Sent cynical comment to chat {chat_id}")
+        except Exception as e:
+            logging.error(f"Error in cynical comment logic: {e}")

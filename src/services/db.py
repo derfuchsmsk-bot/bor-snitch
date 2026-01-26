@@ -1,6 +1,7 @@
 from google.cloud import firestore
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
+from ..utils.game_config import config
 
 def get_current_season_id():
     """Returns the current season ID (Global)."""
@@ -121,23 +122,12 @@ async def check_afk_users(chat_id: int):
         diff = now - last_active
         days_inactive = diff.days
         
-        if days_inactive >= 2:
+        if days_inactive >= config.IGNORE_DAYS_BEFORE_PENALTY:
             # Penalty Logic
             # Base: 50. Progressive: +50 for each extra day.
-            # Day 2: 50
-            # Day 3: 100
-            # Day 4: 150
             
-            extra_days = days_inactive - 2
-            points = 50 + (extra_days * 50)
-            
-            # Cap at some reasonable amount? No, let them suffer.
-            
-            # We need to make sure we don't apply it multiple times for the same "inactive streak" in a weird way?
-            # But this runs daily.
-            # If I was inactive yesterday (Day 2), I got 50 pts.
-            # Today (Day 3), I am still inactive. I get 100 pts.
-            # Yes, that's progressive pain.
+            extra_days = days_inactive - config.IGNORE_DAYS_BEFORE_PENALTY
+            points = config.POINTS_AFK_BASE + (extra_days * config.POINTS_AFK_DAILY)
             
             username = data.get('username', 'Ghost')
             
@@ -152,38 +142,69 @@ async def check_afk_users(chat_id: int):
             
     return offenders
 
-async def apply_weekly_decay(chat_id: int):
+async def apply_weekly_amnesty(chat_id: int):
     """
-    Halves the points for all users in the current season.
+    Applies weekly amnesty: Points accumulated in the LAST 7 DAYS are halved.
+    Total points are reduced by (WeeklyPoints / 2).
     """
     chat_id = str(chat_id)
+    daily_ref = db.collection("chats").document(chat_id).collection("daily_results")
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
+    # 1. Calculate the date range (Last 7 days excluding today? Or just last 7 entries?)
+    # Let's say last 7 days.
+    today = datetime.now()
+    dates_to_check = []
+    for i in range(7):
+        d = today - timedelta(days=i)
+        dates_to_check.append(d.strftime("%Y-%m-%d"))
+        
+    # 2. Aggregate weekly points per user
+    weekly_points = {} # user_id -> points
+    
+    for date_key in dates_to_check:
+        doc = await daily_ref.document(date_key).get()
+        if doc.exists:
+            data = doc.to_dict()
+            offenders = data.get('offenders', [])
+            for off in offenders:
+                uid = str(off.get('user_id'))
+                pts = off.get('points', 0)
+                weekly_points[uid] = weekly_points.get(uid, 0) + pts
+                
+    if not weekly_points:
+        logging.info(f"No points found for amnesty in last 7 days for chat {chat_id}.")
+        return False
+        
+    # 3. Apply reduction
     current_season = get_current_season_id()
     
-    # Process all users
-    async for doc in stats_ref.stream():
-        data = doc.to_dict()
-        
-        # Only affect current season
-        if data.get('season_id') != current_season:
+    for user_id, w_points in weekly_points.items():
+        if w_points <= 0:
             continue
             
-        current_points = data.get('total_points', 0)
-        
-        if current_points == 0:
+        reduction = w_points // 2
+        if reduction <= 0:
             continue
             
-        new_points = current_points // 2
-        new_rank = calculate_rank(new_points)
+        # Fetch user stats
+        user_doc_ref = stats_ref.document(user_id)
+        user_doc = await user_doc_ref.get()
         
-        await stats_ref.document(doc.id).update({
-            "total_points": new_points,
-            "current_rank": new_rank
-        })
-        
+        if user_doc.exists:
+            data = user_doc.to_dict()
+            if data.get('season_id') == current_season:
+                current_total = data.get('total_points', 0)
+                new_total = max(0, current_total - reduction)
+                new_rank = calculate_rank(new_total)
+                
+                await user_doc_ref.update({
+                    "total_points": new_total,
+                    "current_rank": new_rank
+                })
+                logging.info(f"Amnesty applied for user {user_id}: -{reduction} points (Weekly: {w_points}).")
+                
     return True
-    # logging.info(f"Logged message {msg_id} for chat {chat_id}")
 
 async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: datetime):
     """
@@ -240,8 +261,6 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
     current_season = get_current_season_id()
     
     # 1. Check for existing results for this date (Idempotency / Re-run logic)
-    # If we run analysis multiple times a day, we must not double-count points.
-    # We revert the previous points for this day before adding new ones.
     existing_doc = await daily_ref.get()
     
     if existing_doc.exists:
@@ -315,13 +334,13 @@ def calculate_rank(points):
     Calculates the Snitch Rank based on total points.
     Theme: Prison Caste (Reverse/Ironic)
     """
-    if points >= 1500:
+    if points >= config.RANK_PIERCED[0]:
         return "Масть Проткнутая 👑"
-    elif points >= 750:
+    elif points >= config.RANK_OFFENDED[0]:
         return "Обиженный 🚽"
-    elif points >= 250:
+    elif points >= config.RANK_GOAT[0]:
         return "Козёл 🐐"
-    elif points >= 50:
+    elif points >= config.RANK_SHNYR[0]:
         return "Шнырь 🧹"
     else:
         return "Порядочный 😐"
