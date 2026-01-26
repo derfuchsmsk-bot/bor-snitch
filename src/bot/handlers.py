@@ -61,6 +61,27 @@ async def cmd_stats(message: types.Message):
         wins = data.get('snitch_count', 0)
         username = escape(data.get('username', 'Unknown'))
         
+        # Add achievements display
+        achievements = data.get('achievements', [])
+        ach_display = ""
+        
+        titles = []
+        for ach in achievements:
+            if isinstance(ach, dict):
+                # We can show icon + title or just title. Request said "fully show achievement".
+                # Let's show "Icon Title" if icon exists, or just Title.
+                icon = ach.get('icon', '')
+                title = ach.get('title', '')
+                if title:
+                    titles.append(f"{icon} {title}".strip())
+            elif isinstance(ach, str):
+                titles.append(ach)
+        
+        if titles:
+            ach_display = " // " + ", ".join(titles)
+
+        username += ach_display
+        
         text += f"{i}. {username} — {points} очков\n"
         text += f"   Масть: {rank}\n"
         text += f"   Снитч Дня: {wins}\n\n"
