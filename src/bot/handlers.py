@@ -64,7 +64,7 @@ async def cmd_stats(message: types.Message):
              username = f"@{username}"
         
         text += f"{i}. {username} — {points} очков\n"
-        text += f"   Масть: {rank}\n"
+        text += f"   🃏Масть: {rank}\n"
         
         # Achievements in body
         achievements = data.get('achievements', [])
@@ -80,7 +80,7 @@ async def cmd_stats(message: types.Message):
                     ach_list.append(ach)
             
             if ach_list:
-                text += f"   🏅 Ачивки: {', '.join(ach_list)}\n"
+                text += f"   🏅Ачивки: {', '.join(ach_list)}\n"
 
         text += "\n"
         i += 1
@@ -186,12 +186,12 @@ async def cmd_status(message: types.Message):
 
     text = (
         f"👤 <b>Личное Дело:</b> {display_name}\n\n"
-        f"🏷️ <b>Масть:</b> {rank}\n"
+        f"🃏 <b>Масть:</b> {rank}\n"
         f"⚖️ <b>Очки:</b> {points}"
     )
 
     if achievements:
-        text += "\n\n🏅 <b>Достижения:</b>\n"
+        text += "\n\n🏅 <b>Ачивки:</b>\n"
         for ach in achievements:
             if isinstance(ach, str):
                 text += f"• {escape(ach)}\n"
