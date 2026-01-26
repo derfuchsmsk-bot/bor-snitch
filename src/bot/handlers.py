@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_message
 from ..services.ai import validate_report, transcribe_media
 from ..utils.text import escape
 from datetime import datetime, timezone
@@ -161,11 +161,23 @@ async def cmd_report(message: types.Message):
     """
     Report a message for being 'bad'.
     """
-    if not message.reply_to_message or not message.reply_to_message.text:
+    if not message.reply_to_message:
         await message.answer("❌ <b>Ошибка:</b> Используйте команду ответом на сообщение снитча.", parse_mode="HTML")
         return
 
     reported_msg = message.reply_to_message
+    target_text = reported_msg.text
+    
+    # If no text, check if it's media that might have been transcribed
+    if not target_text and (reported_msg.voice or reported_msg.video_note):
+        # Fetch from DB to see if we have transcription
+        stored_msg = await get_message(message.chat.id, reported_msg.message_id)
+        if stored_msg:
+             target_text = stored_msg.get('text')
+    
+    if not target_text:
+        await message.answer("❌ <b>Ошибка:</b> Сообщение не содержит текста или еще не обработано (для голосовых).", parse_mode="HTML")
+        return
     
     # Don't let users report themselves (optional, but logical)
     if reported_msg.from_user.id == message.from_user.id:
@@ -178,7 +190,7 @@ async def cmd_report(message: types.Message):
     context_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=5)
     
     # Validate with AI
-    result = await validate_report(reported_msg.text, context_msgs)
+    result = await validate_report(target_text, context_msgs)
     
     if result and result.get("valid"):
         category = escape(result.get("category", "Unspecified"))

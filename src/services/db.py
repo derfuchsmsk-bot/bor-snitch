@@ -262,6 +262,18 @@ async def get_user_stats(chat_id: int, user_id: int):
         return doc.to_dict()
     return None
 
+async def get_message(chat_id: int, message_id: int):
+    """
+    Fetches a specific message by ID.
+    """
+    chat_id = str(chat_id)
+    message_id = str(message_id)
+    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(message_id)
+    doc = await doc_ref.get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
+
 async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str):
     """
     Flags a message as reported by a user.
