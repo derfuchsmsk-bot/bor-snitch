@@ -4,3 +4,4 @@ archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-Л�
 archive/result.json
 src/scripts/process_archive.py
 src/scripts/convert_chat_to_json.py
+extracted_full.txt
