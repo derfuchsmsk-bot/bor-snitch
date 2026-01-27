@@ -11,6 +11,7 @@ class GameConfig:
     POINTS_AFK_DAILY = 50
 
     # Gambling
+    GAMBLE_WIN_CHANCE = 0.49
     GAMBLE_WIN_POINTS = 50
     GAMBLE_LOSS_POINTS = 75
 

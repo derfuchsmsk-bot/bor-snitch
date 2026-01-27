@@ -317,9 +317,9 @@ async def cmd_casino(message: types.Message):
         await message.reply("Ты уже лудил сегодня, додеп только завтра.")
         return
 
-    # Roll (50/50)
-    is_win = random.choice([True, False])
-    logging.info(f"Casino roll for user {user_id} in chat {chat_id}: {'WIN' if is_win else 'LOSS'}")
+    # Roll
+    is_win = random.random() < config.GAMBLE_WIN_CHANCE
+    logging.info(f"Casino roll for user {user_id} in chat {chat_id}: {'WIN' if is_win else 'LOSS'} (Chance: {config.GAMBLE_WIN_CHANCE})")
     
     current_points = stats.get('total_points', 0) if stats else 0
     
