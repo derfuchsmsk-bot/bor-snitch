@@ -319,6 +319,7 @@ async def cmd_casino(message: types.Message):
 
     # Roll (50/50)
     is_win = random.choice([True, False])
+    logging.info(f"Casino roll for user {user_id} in chat {chat_id}: {'WIN' if is_win else 'LOSS'}")
     
     current_points = stats.get('total_points', 0) if stats else 0
     
