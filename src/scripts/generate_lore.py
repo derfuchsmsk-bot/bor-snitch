@@ -38,7 +38,7 @@ async def fetch_all_messages(chat_id):
 
 async def generate_lore_for_chat(chat_id):
     """
-    Generates lore description using Gemini 1.5 Pro.
+    Generates lore description using Gemini 3 Flash.
     """
     logging.info(f"Fetching messages for chat {chat_id}...")
     messages = await fetch_all_messages(chat_id)
@@ -51,6 +51,17 @@ async def generate_lore_for_chat(chat_id):
     
     # Prepare context string
     context_str = ""
+    
+    # Add archive content
+    try:
+        archive_path = "archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified.txt"
+        with open(archive_path, "r", encoding="utf-8") as f:
+            archive_text = f.read()
+            context_str += f"=== АРХИВ СООБЩЕНИЙ (2025 год) ===\n{archive_text}\n\n=== СВЕЖИЕ СООБЩЕНИЯ ===\n"
+            logging.info(f"Loaded archive text: {len(archive_text)} chars")
+    except Exception as e:
+        logging.error(f"Failed to read archive: {e}")
+
     for msg in messages:
         username = msg.get('username', 'Unknown')
         text = msg.get('text', '')
@@ -122,6 +133,9 @@ async def main():
             continue
             
         chat_id = chat_doc.id
+        if str(chat_id) != "-954103380":
+            continue
+
         logging.info(f"Processing chat {chat_id}...")
         
         lore_content = await generate_lore_for_chat(chat_id)
@@ -131,8 +145,8 @@ async def main():
             filename = f"lore_{chat_id}_{date_str}.md"
             
             # Save locally first (optional, useful for debug)
-            # with open(filename, "w", encoding="utf-8") as f:
-            #     f.write(lore_content)
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(lore_content)
             
             upload_to_gcs(lore_content, filename)
             

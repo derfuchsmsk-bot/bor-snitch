@@ -5,3 +5,28 @@ archive/result.json
 src/scripts/process_archive.py
 src/scripts/convert_chat_to_json.py
 extracted_full.txt
+archive/lore_-954103380_2026-01-28.md
+archive/snitch-bot-4342454-c76dd8f0f879.json
+lore_-954103380_2026-01-28.md
+service-account.json
+archive/lore_-954103380_2026-01-28 (1).md
+archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (1).txt
+archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3).txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_1.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_10.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_2.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_3.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_4.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_5.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_6.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_7.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_8.txt
+archive/year/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-ЛУДИНСК-ЕСЬКИНО-ВЛАДИМИР_minified (3)_9.txt
+archive/год.txt
+src/scripts/__pycache__/generate_lore.cpython-311.pyc
+src/scripts/generate_lore.py
+src/scripts/process_year_archive.py
+src/utils/__pycache__/config.cpython-311.pyc
+src/utils/__pycache__/game_config.cpython-311.pyc
+src/scripts/generate_lore.py
+src/utils/__pycache__/config.cpython-311.pyc
