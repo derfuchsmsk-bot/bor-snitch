@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_message, record_gamble_result, increment_false_report_count, apply_penalty
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, apply_penalty
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -245,7 +245,11 @@ async def cmd_report(message: types.Message):
     status_msg = await message.answer("🕵️‍♂️ <b>Анализ доноса...</b>", parse_mode="HTML")
     
     # Fetch context (Use limit from config)
-    context_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_CONTEXT_LIMIT)
+    # We fetch PREVIOUS messages (context limit) AND SUBSEQUENT messages (fixed small limit, e.g. 5)
+    prev_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_CONTEXT_LIMIT)
+    next_msgs = await get_subsequent_messages(message.chat.id, reported_msg.date, limit=5)
+    
+    context_msgs = prev_msgs + next_msgs
     
     # Validate with AI
     result = await validate_report(target_text, context_msgs)

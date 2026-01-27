@@ -261,6 +261,26 @@ async def get_recent_messages(chat_id: int, before_timestamp: datetime, limit: i
     logs.reverse()
     return logs
 
+async def get_subsequent_messages(chat_id: int, after_timestamp: datetime, limit: int = 5):
+    """
+    Fetches the next N messages after a specific timestamp.
+    """
+    chat_ref = db.collection("chats").document(str(chat_id))
+    messages_ref = chat_ref.collection("messages")
+    
+    # Query: timestamp > after_timestamp, ORDER BY timestamp ASC, LIMIT limit
+    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", ">", after_timestamp))\
+                        .order_by("timestamp", direction=firestore.Query.ASCENDING)\
+                        .limit(limit)
+    
+    logs = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data['message_id'] = doc.id
+        logs.append(data)
+        
+    return logs
+
 async def save_daily_results(chat_id: int, analysis_result: dict):
     """
     Saves the result of the daily analysis (list of offenders).
