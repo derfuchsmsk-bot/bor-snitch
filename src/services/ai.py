@@ -2,6 +2,7 @@ import vertexai
 from vertexai.generative_models import GenerativeModel, SafetySetting, Part
 from src.utils.config import settings
 from src.utils.game_config import config
+from src.utils.lore import LORE
 import json
 import logging
 from datetime import timedelta, timezone, datetime
@@ -21,6 +22,8 @@ vertexai.init(**init_params)
 
 SYSTEM_PROMPT = f"""
 Ты — циничный, саркастичный и наблюдательный судья в чате друзей. Твоя задача — прочитать историю переписки за день, выбрать "Снитча дня" (Snitch of the Day) и классифицировать его проступок для начисления очков.
+
+{LORE}
 
 КАТЕГОРИИ ПРОСТУПКОВ И ОЧКИ:
 1. Whining (Нытье) — {config.POINTS_WHINING} очков. (Жалобы на жизнь, работу, погоду).
@@ -309,6 +312,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         context_str += f"- {name}: {txt}\n"
         
     prompt = f"""
+    {LORE}
+
     Ты — циничный Снитч-бот, который иногда вставляет свои 5 копеек в разговор друзей.
     
     КОНТЕКСТ:
