@@ -439,3 +439,65 @@ async def log_reaction(chat_id: int, user_id: int, username: str, message_id: in
     logging.debug(f"Writing reaction {reaction_id} to Firestore...")
     await doc_ref.set(data)
     logging.debug(f"Reaction {reaction_id} written successfully.")
+
+async def record_gamble_result(chat_id: int, user_id: int, new_points: int, date_key: str):
+    """
+    Updates user stats after a gamble.
+    """
+    chat_id = str(chat_id)
+    user_id = str(user_id)
+    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
+    
+    new_rank = calculate_rank(new_points)
+    
+    await user_stats_ref.set({
+        "total_points": new_points,
+        "current_rank": new_rank,
+        "last_gamble_date": date_key
+    }, merge=True)
+
+async def increment_false_report_count(chat_id: int, user_id: int):
+    """
+    Increments the false report counter and returns the new value.
+    """
+    chat_id = str(chat_id)
+    user_id = str(user_id)
+    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
+    
+    doc = await user_stats_ref.get()
+    
+    current_count = 0
+    if doc.exists:
+        data = doc.to_dict()
+        current_count = data.get("false_report_count", 0)
+        
+    new_count = current_count + 1
+    
+    await user_stats_ref.set({
+        "false_report_count": new_count
+    }, merge=True)
+    
+    return new_count
+
+async def apply_penalty(chat_id: int, user_id: int, points: int):
+    """
+    Applies immediate penalty points.
+    """
+    chat_id = str(chat_id)
+    user_id = str(user_id)
+    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
+    
+    doc = await user_stats_ref.get()
+    current_points = 0
+    
+    if doc.exists:
+        data = doc.to_dict()
+        current_points = data.get("total_points", 0)
+        
+    new_points = current_points + points
+    new_rank = calculate_rank(new_points)
+    
+    await user_stats_ref.set({
+        "total_points": new_points,
+        "current_rank": new_rank
+    }, merge=True)

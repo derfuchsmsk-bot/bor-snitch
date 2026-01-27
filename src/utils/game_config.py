@@ -10,6 +10,14 @@ class GameConfig:
     POINTS_AFK_BASE = 50
     POINTS_AFK_DAILY = 50
 
+    # Gambling
+    GAMBLE_WIN_POINTS = 50
+    GAMBLE_LOSS_POINTS = 75
+
+    # False Reports
+    FALSE_REPORT_LIMIT = 3
+    FALSE_REPORT_PENALTY = 25
+
     # Rules
     IGNORE_DAYS_BEFORE_PENALTY = 2
     

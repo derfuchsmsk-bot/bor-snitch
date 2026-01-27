@@ -1,11 +1,11 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_message
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_message, record_gamble_result, increment_false_report_count, apply_penalty
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 from io import BytesIO
 import random
@@ -99,7 +99,11 @@ async def cmd_rules(message: types.Message):
         f"🔹 <b>Духота</b> — {config.POINTS_STIFFNESS} pts\n"
         f"🔹 <b>Токсичность</b> — {config.POINTS_TOXICITY} pts\n"
         f"🔹 <b>Снитчевание (Игнор/Предательство)</b> — {config.POINTS_SNITCHING} pts\n"
-        f"🔹 <b>AFK (Молчанка)</b> — {config.POINTS_AFK_BASE}+ pts (2 дня тишины = 50, далее +50 за день)\n\n"
+        f"🔹 <b>AFK (Молчанка)</b> — {config.POINTS_AFK_BASE}+ pts (2 дня тишины = 50, далее +50 за день)\n"
+        f"🔹 <b>Ложные доносы</b> — +{config.FALSE_REPORT_PENALTY} pts (за каждые {config.FALSE_REPORT_LIMIT} отклоненных репорта)\n\n"
+        "🎰 <b>Казино (/casino):</b>\n"
+        f"Раз в сутки можно испытать удачу.\n"
+        f"Победа: -{config.GAMBLE_WIN_POINTS} pts | Проигрыш: +{config.GAMBLE_LOSS_POINTS} pts\n\n"
         "⚠️ <b>Особые правила:</b>\n"
         "🤡 Реакция клоуна = Токсичность\n"
         "👻 Игнор тега = Духота или Токсичность\n"
@@ -267,13 +271,70 @@ async def cmd_report(message: types.Message):
             parse_mode="HTML"
         )
     else:
+        # Increment false report count
+        new_count = await increment_false_report_count(message.chat.id, message.from_user.id)
+        
         deny_reason = escape(result.get("reason", "Not a violation") if result else "AI Error")
-        await status_msg.edit_text(
+        response_text = (
             f"❌ <b>Отклонено.</b>\n\n"
             f"Это не масть. Хватит спамить, ты уже ходишь под вопросом, клоун 🤡🤡🤡\n"
-            f"<i>(Причина: {deny_reason})</i>",
-            parse_mode="HTML"
+            f"<i>(Причина: {deny_reason})</i>"
         )
+        
+        # Check for penalty
+        if new_count % config.FALSE_REPORT_LIMIT == 0:
+            await apply_penalty(message.chat.id, message.from_user.id, config.FALSE_REPORT_PENALTY)
+            response_text += (
+                f"\n\n🚨 <b>Ты конкретный снитч: +{config.FALSE_REPORT_PENALTY} очков.</b>\n"
+                f"<i>(Ложных доносов подряд: {new_count})</i>"
+            )
+            
+        await status_msg.edit_text(response_text, parse_mode="HTML")
+
+@router.message(Command("casino"))
+async def cmd_casino(message: types.Message):
+    """
+    Daily gambling mechanic (Roulette).
+    """
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    # Check cooldown (Moscow Time)
+    tz_moscow = timezone(timedelta(hours=3))
+    now = datetime.now(tz_moscow)
+    today_str = now.strftime("%Y-%m-%d")
+    
+    stats = await get_user_stats(chat_id, user_id)
+    if stats and stats.get('last_gamble_date') == today_str:
+        await message.reply("Ты уже лудил сегодня, додеп только завтра.")
+        return
+
+    # Roll (50/50)
+    is_win = random.choice([True, False])
+    
+    current_points = stats.get('total_points', 0) if stats else 0
+    
+    if is_win:
+        # Win: Remove points (Good)
+        deduction = config.GAMBLE_WIN_POINTS
+        new_points = max(0, current_points - deduction)
+        text = (
+            f"🎰 <b>ЗАНОС!</b>\n\n"
+            f"Тебе фартануло. Сняли {deduction} очков.\n"
+            f"Текущий счет: {new_points}"
+        )
+    else:
+        # Lose: Add points (Bad)
+        penalty = config.GAMBLE_LOSS_POINTS
+        new_points = current_points + penalty
+        text = (
+            f"🎰 <b>АХХАХАХАХАХ ЛОХ ЕБАНЫЙ, А ДОДЕПНУТЬ НЕ ПОЛУЧИТСЯ АХАХАХАХХА!</b>\n\n"
+            f"Ты проиграл. +{penalty} очков.\n"
+            f"Текущий счет: {new_points}"
+        )
+        
+    await record_gamble_result(chat_id, user_id, new_points, today_str)
+    await message.reply(text, parse_mode="HTML")
 
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):
