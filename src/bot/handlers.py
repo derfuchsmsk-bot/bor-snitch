@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -372,6 +372,14 @@ async def handle_reactions(reaction: MessageReactionUpdated):
             emoji=emoji,
             timestamp=reaction.date
         )
+
+@router.edited_message()
+async def handle_edited_messages(message: types.Message):
+    """
+    Handle edited messages and update them in Firestore.
+    """
+    logging.debug(f"Processing edited message {message.message_id} in chat {message.chat.id}")
+    await update_edited_message(message)
 
 @router.message(F.text | F.sticker | F.voice | F.video_note)
 async def handle_messages(message: types.Message):

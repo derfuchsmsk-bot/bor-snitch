@@ -522,3 +522,29 @@ async def add_points(chat_id: int, user_id: int, points: int):
         "total_points": new_points,
         "current_rank": new_rank
     }, merge=True)
+
+async def update_edited_message(message):
+    """
+    Updates an existing message in Firestore when it is edited.
+    """
+    chat_id = str(message.chat.id)
+    msg_id = str(message.message_id)
+    
+    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
+    
+    text_content = message.text or message.caption
+    if not text_content and message.sticker:
+        text_content = f"[STICKER] {message.sticker.emoji or 'Unknown'}"
+        
+    if not text_content:
+        return
+
+    update_data = {
+        "text": text_content,
+        "is_edited": True,
+        "last_edit_date": message.edit_date
+    }
+    
+    logging.debug(f"Updating edited message {msg_id} in Firestore (Chat: {chat_id})...")
+    await doc_ref.set(update_data, merge=True)
+    logging.debug(f"Message {msg_id} updated successfully.")
