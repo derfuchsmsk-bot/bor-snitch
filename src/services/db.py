@@ -401,7 +401,7 @@ async def get_message(chat_id: int, message_id: int):
         return doc.to_dict()
     return None
 
-async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str):
+async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str, points_awarded: int = 0):
     """
     Flags a message as reported by a user.
     """
@@ -413,7 +413,8 @@ async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, rea
         "is_reported": True,
         "reported_by": reporter_id,
         "report_reason": reason,
-        "report_timestamp": firestore.SERVER_TIMESTAMP
+        "report_timestamp": firestore.SERVER_TIMESTAMP,
+        "points_awarded": points_awarded
     }, merge=True)
 
 async def log_reaction(chat_id: int, user_id: int, username: str, message_id: int, emoji: str, timestamp: datetime):
@@ -499,9 +500,9 @@ async def increment_false_report_count(chat_id: int, user_id: int):
     
     return new_count
 
-async def apply_penalty(chat_id: int, user_id: int, points: int):
+async def add_points(chat_id: int, user_id: int, points: int):
     """
-    Applies immediate penalty points.
+    Applies immediate points (penalty or reward).
     """
     chat_id = str(chat_id)
     user_id = str(user_id)

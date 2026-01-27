@@ -58,6 +58,7 @@ SYSTEM_PROMPT = f"""
 5. УЧЕТ ДОНОСОВ (REPORTED MESSAGES):
    - В логах могут быть пометки `[REPORTED BY USER: <reason>]`.
    - Это означает, что другой пользователь пожаловался на это сообщение.
+   - Если есть пометка `[POINTS ALREADY AWARDED]`, значит очки уже начислены. НЕ НАЧИСЛЯЙ ИХ ПОВТОРНО. Просто отметь факт нарушения.
    - ОТНЕСИСЬ К ЭТОМУ СЕРЬЕЗНО. Если жалоба обоснована (не противоречит правилам Mercy Mode/Context) — это гарантированное нарушение.
    - Если жалоба — откровенная клевета (на нормальное сообщение) — накажи самого доносчика за "Ложный донос" (Whining, {config.POINTS_WHINING} очков).
 
@@ -233,7 +234,10 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
         report_tag = ""
         if log.get('is_reported'):
             reason = log.get('report_reason', 'No reason')
+            points_awarded = log.get('points_awarded', 0)
             report_tag = f" [REPORTED BY USER: {reason}]"
+            if points_awarded > 0:
+                report_tag += f" [POINTS ALREADY AWARDED ({points_awarded}) - DO NOT SCORE]"
 
         chat_history += f"[{time_str}] {log['username']} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}\n"
     chat_history += "LOG END"
@@ -292,7 +296,7 @@ async def transcribe_media(file_data: bytes, mime_type: str) -> str:
         logging.error(f"Transcription error: {e}")
         return f"[Transcription Failed: {e}]"
 
-async def generate_cynical_comment(context_msgs, current_text):
+async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown"):
     """
     Generates a short, cynical comment based on context.
     """
@@ -310,10 +314,12 @@ async def generate_cynical_comment(context_msgs, current_text):
     КОНТЕКСТ:
     {context_str}
     
-    ПОСЛЕДНЕЕ СООБЩЕНИЕ:
+    ПОСЛЕДНЕЕ СООБЩЕНИЕ (от пользователя {current_username}):
     "{current_text}"
     
-    Напиши ОДНО короткое, едкое, смешное или саркастичное предложение-комментарий к последнему сообщению или ситуации.
+    Напиши ОДНО короткое, едкое, смешное или саркастичное предложение-комментарий.
+    ВАЖНО: Ты отвечаешь именно пользователю {current_username}. Не путай его с другими людьми из контекста.
+    
     Не будь слишком токсичным, просто циничным и остроумным.
     Используй тюремный жаргон умеренно или интеллектуальный снобизм.
     """

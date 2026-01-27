@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, apply_penalty
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -264,14 +264,18 @@ async def cmd_report(message: types.Message):
             message.chat.id,
             reported_msg.message_id,
             message.from_user.id,
-            f"{category}: {reason}"
+            f"{category}: {reason}",
+            points_awarded=points
         )
+        
+        # Award points immediately
+        await add_points(message.chat.id, reported_msg.from_user.id, points)
         
         await status_msg.edit_text(
             f"✅ <b>Донос принят!</b>\n\n"
-            f"📂 <b>Категория:</b> {category} (~{points} pts)\n"
+            f"📂 <b>Категория:</b> {category} (+{points} pts)\n"
             f"📝 <b>Вердикт:</b> {reason}\n"
-            f"⚖️ <i>Очки будут начислены при ночном пересчете.</i>",
+            f"⚖️ <i>Очки начислены моментально.</i>",
             parse_mode="HTML"
         )
     else:
@@ -287,7 +291,7 @@ async def cmd_report(message: types.Message):
         
         # Check for penalty
         if new_count % config.FALSE_REPORT_LIMIT == 0:
-            await apply_penalty(message.chat.id, message.from_user.id, config.FALSE_REPORT_PENALTY)
+            await add_points(message.chat.id, message.from_user.id, config.FALSE_REPORT_PENALTY)
             response_text += (
                 f"\n\n🚨 <b>Ты конкретный снитч: +{config.FALSE_REPORT_PENALTY} очков.</b>\n"
                 f"<i>(Ложных доносов подряд: {new_count})</i>"
@@ -430,7 +434,8 @@ async def handle_messages(message: types.Message):
                     # Generate comment
                     # Get small context for immediate reply
                     context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
-                    comment = await generate_cynical_comment(context_msgs, message.text)
+                    username = message.from_user.username or message.from_user.first_name
+                    comment = await generate_cynical_comment(context_msgs, message.text, username)
                     
                     if comment:
                         await message.reply(comment)
