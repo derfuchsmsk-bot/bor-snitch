@@ -24,7 +24,7 @@ class GameConfig:
     
     # Random Cynical Comments
     CYNICAL_COMMENT_CHANCE = 0.005 # 0.5%
-    CYNICAL_COMMENT_COOLDOWN_SECONDS = 1800 # 30 minutes
+    CYNICAL_COMMENT_COOLDOWN_SECONDS = 100 # 30 minutes
 
     # Ranks
     RANK_NORMAL = (0, 49)
