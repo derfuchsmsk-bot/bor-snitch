@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -151,6 +151,42 @@ async def cmd_agreements(message: types.Message):
         text += f"{i}. {agreement_text} <i>(от {date_str})</i>\n"
 
     await message.answer(text, parse_mode="HTML")
+
+@router.message(Command("all"))
+async def cmd_all(message: types.Message):
+    """
+    Tag all users in the chat.
+    """
+    users = await get_chat_users(message.chat.id)
+    
+    if not users:
+        await message.answer("В этом чате еще никто не отметился... кроме тебя, возможно.")
+        return
+
+    # Filter out the bot itself if it somehow got into user_stats (though unlikely based on log_message)
+    # Also we might want to avoid tagging the person who called the command, but usually /all tags everyone.
+    
+    mentions = []
+    for u in users:
+        user_id = u['user_id']
+        username = u['username']
+        full_name = u['full_name'] or "Аноним"
+        
+        if username:
+            mentions.append(f"@{username}")
+        else:
+            mentions.append(f"<a href='tg://user?id={user_id}'>{escape(full_name)}</a>")
+    
+    if not mentions:
+        await message.answer("Некого тегать.")
+        return
+
+    # Split into chunks of 50 to avoid Telegram limits
+    chunk_size = 50
+    for i in range(0, len(mentions), chunk_size):
+        chunk = mentions[i:i + chunk_size]
+        text = "📣 <b>ВНИМАНИЕ ВСЕМ!</b>\n\n" + " ".join(chunk)
+        await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("status", "me"))
 async def cmd_status(message: types.Message):

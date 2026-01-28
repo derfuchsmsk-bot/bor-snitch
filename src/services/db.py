@@ -548,3 +548,25 @@ async def update_edited_message(message):
     logging.debug(f"Updating edited message {msg_id} in Firestore (Chat: {chat_id})...")
     await doc_ref.set(update_data, merge=True)
     logging.debug(f"Message {msg_id} updated successfully.")
+
+async def get_chat_users(chat_id: int):
+    """
+    Fetches all users who have stats in the chat.
+    Used for the /all command.
+    """
+    chat_id = str(chat_id)
+    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
+    
+    users = []
+    async for doc in stats_ref.stream():
+        data = doc.to_dict()
+        user_id = doc.id
+        username = data.get('username')
+        full_name = data.get('full_name', username)
+        
+        users.append({
+            "user_id": user_id,
+            "username": username,
+            "full_name": full_name
+        })
+    return users

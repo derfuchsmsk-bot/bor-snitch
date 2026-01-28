@@ -198,6 +198,7 @@ async def on_startup():
         types.BotCommand(command="report", description="Донос (Reply)"),
         types.BotCommand(command="casino", description="Испытать удачу"),
         types.BotCommand(command="agreements", description="Список договоренностей"),
+        types.BotCommand(command="all", description="Позвать всех"),
     ]
     await bot.set_my_commands(commands)
     
