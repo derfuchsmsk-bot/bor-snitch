@@ -23,8 +23,8 @@ class GameConfig:
     IGNORE_DAYS_BEFORE_PENALTY = 2
     
     # Random Cynical Comments
-    CYNICAL_COMMENT_CHANCE = 0.005 # 0,05%
-    CYNICAL_COMMENT_COOLDOWN_SECONDS = 1 # 1800=30 minutes
+    CYNICAL_COMMENT_CHANCE = 0.005 # 0.5%
+    CYNICAL_COMMENT_COOLDOWN_SECONDS = 1800 # 30 minutes
 
     # Ranks
     RANK_NORMAL = (0, 49)
@@ -33,7 +33,17 @@ class GameConfig:
     RANK_OFFENDED = (750, 1499)
     RANK_PIERCED = (1500, float('inf'))
 
-    # Context
+    # Context & Limits
     REPORT_CONTEXT_LIMIT = 25
+    REPORT_NEXT_CONTEXT_LIMIT = 5
+    MENTION_CHUNK_SIZE = 50
+    
+    # Time & Analysis
+    TIMEZONE_OFFSET = 3 # Moscow Time (UTC+3)
+    ANALYSIS_CUTOFF_HOUR = 4 # Hour to decide if analyzing yesterday or today
+
+    # AI Models
+    AI_MODEL_ANALYSIS = "gemini-3-flash-preview"
+    AI_MODEL_MULTIMODAL = "gemini-3-pro-preview"
 
 config = GameConfig()

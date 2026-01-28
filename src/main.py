@@ -6,6 +6,8 @@ from src.bot.handlers import router
 from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
+from src.utils.game_config import config
+from src.utils import messages
 from datetime import datetime, timezone, timedelta, time
 import logging
 
@@ -16,58 +18,45 @@ app = FastAPI()
 scheduler = AsyncIOScheduler()
 
 # Initialize Bot and Dispatcher
-# Bot is initialized globally here
 bot = Bot(token=settings.TELEGRAM_TOKEN)
 
 async def perform_chat_analysis(chat_id: str):
     """
     Core logic for daily analysis.
     """
-    # Calculate time window: 23:50 MSK to 23:50 MSK
-    msk_tz = timezone(timedelta(hours=3))
-    now_msk = datetime.now(msk_tz)
+    moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+    now_msk = datetime.now(moscow_tz)
     
     # Determine the date we are analyzing.
-    # If it's early morning (e.g. before 4 AM), we assume we are finalizing yesterday's business.
-    # Otherwise (e.g. 12:00 or 23:50), we are analyzing Today.
     analysis_date = now_msk.date()
-    if now_msk.hour < 4:
+    if now_msk.hour < config.ANALYSIS_CUTOFF_HOUR:
          analysis_date -= timedelta(days=1)
          
     # End of window is always 23:50 of the analysis_date
-    end_dt_msk = datetime.combine(analysis_date, time(23, 50), tzinfo=msk_tz)
-    
+    end_dt_msk = datetime.combine(analysis_date, time(23, 50), tzinfo=moscow_tz)
     start_dt_msk = end_dt_msk - timedelta(days=1)
     
     # Convert to UTC for DB query
     end_dt_utc = end_dt_msk.astimezone(timezone.utc)
     start_dt_utc = start_dt_msk.astimezone(timezone.utc)
     
-    # Date key for saving results (Use MSK date of the end of the period)
     today_str = end_dt_msk.strftime("%Y-%m-%d")
-    
-    # Fetch active agreements
     active_agreements = await get_active_agreements(chat_id)
     
     logging.info(f"Starting analysis for chat {chat_id}. Window (MSK): {start_dt_msk} to {end_dt_msk}")
-    
     logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
     
-    # 1. AI Analysis (if logs exist)
     ai_result = None
     if logs:
         ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str)
     
-    # 2. AFK Analysis (Always run)
     afk_offenders = await check_afk_users(chat_id)
     
-    # If nothing happened at all
     if not logs and not afk_offenders:
         logging.info("No logs and no AFK violations.")
         await bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов и нарушений)")
         return {"status": "no logs"}
 
-    # Prepare final result structure
     final_result = {
         "offenders": [],
         "new_agreements": []
@@ -77,36 +66,23 @@ async def perform_chat_analysis(chat_id: str):
         final_result["offenders"].extend(ai_result.get("offenders", []))
         final_result["new_agreements"].extend(ai_result.get("new_agreements", []))
         
-    # Append AFK offenders
     final_result["offenders"].extend(afk_offenders)
     
-    # Proceed if we have ANY result (offenders or new agreements)
-    # Even if list is empty, we proceed to save "empty" result if we had logs (to mark day as processed)
-    # But if no logs and we are here, it means we have AFK offenders.
-    
-    result = final_result
-    
-    if result:
-        # Add date info
-        result['date_key'] = today_str
+    if final_result:
+        final_result['date_key'] = today_str
+        await save_daily_results(chat_id, final_result)
         
-        # Save to DB
-        await save_daily_results(chat_id, result)
-        
-        # Save New Agreements
-        new_agreements = result.get('new_agreements', [])
+        new_agreements = final_result.get('new_agreements', [])
         for ag in new_agreements:
             await save_agreement(chat_id, ag)
         
-        # Announce in chat
-        offenders = result.get('offenders', [])
+        offenders = final_result.get('offenders', [])
         
         if not offenders:
-            text = "✨ <b>ИТОГИ ДНЯ</b> ✨\n\nСегодня в чате царила гармония. Ни одного нарушения! 🕊️"
+            text = messages.DAILY_SUMMARY_TITLE + messages.DAILY_NO_OFFENDERS
         else:
-            text = "🚨 <b>ИТОГИ ДНЯ</b> 🚨\n\n"
-            i = 1
-            for off in offenders:
+            text = messages.DAILY_OFFENDERS_TITLE
+            for i, off in enumerate(offenders, 1):
                 quote = off.get('quote')
                 username = escape(off.get('username', 'Аноним'))
                 if not username.startswith("@"):
@@ -123,21 +99,17 @@ async def perform_chat_analysis(chat_id: str):
                 if quote:
                     text += f"   💬 <i>{escape(quote)}</i>\n"
                 text += "\n"
-                i += 1
         
         if new_agreements:
-            text += "\n🤝 <b>Новые договоренности:</b>\n"
+            text += messages.NEW_AGREEMENTS_TITLE
             for ag in new_agreements:
                  text += f"📌 {escape(ag.get('text'))}\n"
                  
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
         
-    return {"status": "analyzed", "result": result}
+    return {"status": "analyzed", "result": final_result}
 
 async def scheduled_daily_analysis():
-    """
-    Runs daily analysis for all active chats.
-    """
     logging.info("Starting scheduled daily analysis...")
     try:
         chats_ref = db.collection("chats")
@@ -157,12 +129,8 @@ async def scheduled_daily_analysis():
         logging.error(f"Error in scheduled analysis: {e}")
 
 async def scheduled_weekly_decay():
-    """
-    Runs weekly amnesty for all active chats.
-    """
     logging.info("Starting scheduled weekly amnesty...")
     try:
-        # Assuming all docs in 'chats' are active chats
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
@@ -173,11 +141,10 @@ async def scheduled_weekly_decay():
             logging.info(f"Applying amnesty for chat {chat_id}")
             await apply_weekly_amnesty(chat_id)
             
-            # Announce
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="🧹 <b>Еженедельная Амнистия!</b>\n\nСписана половина очков, набранных за эту неделю. Живите пока.",
+                    text=messages.AMNESTY_MESSAGE,
                     parse_mode="HTML"
                 )
             except Exception as e:
@@ -188,9 +155,6 @@ async def scheduled_weekly_decay():
 
 @app.on_event("startup")
 async def on_startup():
-    """
-    Set bot commands on startup.
-    """
     commands = [
         types.BotCommand(command="status", description="Мое личное дело"),
         types.BotCommand(command="stats", description="Топ Снитчей"),
@@ -201,14 +165,7 @@ async def on_startup():
         types.BotCommand(command="all", description="Позвать всех"),
     ]
     await bot.set_my_commands(commands)
-    
-    # Start Scheduler
-    # Weekly Decay: Every Sunday at 23:59 UTC
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
-    
-    # NOTE: Daily analysis is triggered externally by Cloud Scheduler to support Serverless architecture.
-    # See setup instructions for Cloud Scheduler configuration.
-    
     scheduler.start()
 
 dp = Dispatcher()
@@ -216,9 +173,6 @@ dp.include_router(router)
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    """
-    Handle incoming Telegram updates.
-    """
     try:
         update_data = await request.json()
         update = types.Update(**update_data)
@@ -230,48 +184,28 @@ async def telegram_webhook(request: Request):
 
 @app.post("/analyze_daily")
 async def analyze_daily(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
-    """
-    Trigger daily analysis.
-    Called by Cloud Scheduler.
-    Payload: {"chat_id": 123456}
-    """
-    # Verify secret token
     if x_secret_token != settings.SECRET_TOKEN:
-        # Allow checking query param or generic auth if header not set by scheduler easily
-        # For now strict check
         raise HTTPException(status_code=403, detail="Invalid token")
-        
     data = await request.json()
     chat_id = data.get("chat_id")
-    
     if not chat_id:
         raise HTTPException(status_code=400, detail="Missing chat_id")
-        
     return await perform_chat_analysis(chat_id)
 
 @app.post("/weekly_decay")
 async def weekly_decay(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
-    """
-    Halve points for all users based on weekly accumulation.
-    Triggered by Cloud Scheduler weekly.
-    """
     if x_secret_token != settings.SECRET_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid token")
-        
     data = await request.json()
     chat_id = data.get("chat_id")
-    
     if not chat_id:
         raise HTTPException(status_code=400, detail="Missing chat_id")
-        
     await apply_weekly_amnesty(chat_id)
-    
     await bot.send_message(
         chat_id=chat_id,
-        text="🧹 <b>Еженедельная Амнистия!</b>\n\nСписана половина очков, набранных за эту неделю. Живите пока.",
+        text=messages.AMNESTY_MESSAGE,
         parse_mode="HTML"
     )
-    
     return {"status": "amnesty_applied"}
     
 @app.get("/")
