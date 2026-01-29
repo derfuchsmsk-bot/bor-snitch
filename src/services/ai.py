@@ -116,9 +116,9 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
         if reply_id:
             target_user = id_map.get(str(reply_id))
             if target_user:
-                reply_context = f" (replied to {target_user})"
+                reply_context = f" [Reply to {target_user}, MsgID: {reply_id}]"
             else:
-                reply_context = " (reply)"
+                reply_context = f" [Reply to MsgID: {reply_id}]"
         
         report_tag = ""
         if log.get('is_reported'):
@@ -137,10 +137,21 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
         for ag in active_agreements:
              ts = ag.get('created_at')
              date_str_agr = ts.strftime("%Y-%m-%d") if hasattr(ts, 'strftime') else "Unknown"
-             agreements_text += f"- {ag['text']} (от {date_str_agr})\n"
+             ag_type = ag.get('type', 'vow')
+             ag_users = ", ".join(ag.get('users', []))
+             agreements_text += f"- [ID: {ag['id']}] {ag_users}: {ag['text']} (Тип: {ag_type}, от {date_str_agr})\n"
+
+    # Add Day of Week for better context
+    try:
+        dt_obj = datetime.fromisoformat(date_str) if date_str else datetime.now()
+        days_ru = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        day_of_week = days_ru[dt_obj.weekday()]
+        full_date_str = f"{date_str} ({day_of_week})"
+    except Exception:
+        full_date_str = date_str or 'Unknown'
 
     prompt = f"""
-    СЕГОДНЯШНЯЯ ДАТА: {date_str or 'Unknown'}
+    СЕГОДНЯШНЯЯ ДАТА: {full_date_str}
     
     ACTIVE AGREEMENTS (Проверь на нарушения):
     {agreements_text}

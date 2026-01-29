@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users
+from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users, dispute_agreement
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -80,22 +80,62 @@ async def cmd_agreements(message: types.Message):
         await message.answer("🤝 <b>Договоренности:</b>\n\nНет действующих договоренностей. Живите спокойно... пока что.", parse_mode="HTML")
         return
 
-    text = "🤝 <b>Действующие договоренности:</b>\n\n"
+    text = "🤝 <b>Слово Пацана (Действующие):</b>\n\n"
     for i, ag in enumerate(agreements, 1):
         agreement_text = escape(ag.get('text', '???'))
-        created_at = ag.get('created_at')
-        date_str = "?"
-        if created_at:
-             try:
-                 if hasattr(created_at, 'strftime'):
-                     date_str = created_at.strftime("%d.%m.%Y")
-                 else:
-                     date_str = str(created_at).split(' ')[0]
-             except Exception:
-                 date_str = "Unknown"
-        text += f"{i}. {agreement_text} <i>(от {date_str})</i>\n"
+        ag_type = ag.get('type', 'vow')
+        
+        icon = "🕯" # vow
+        if ag_type == "pact": icon = "🤝"
+        elif ag_type == "public": icon = "📢"
+        
+        status_icon = "⏳"
+        
+        expires_at = ag.get('expires_at')
+        time_str = ""
+        if expires_at:
+            if hasattr(expires_at, 'strftime'):
+                time_str = f" (до {expires_at.strftime('%d.%m %H:%M')})"
+        
+        text += f"{i}. {status_icon} {icon} <b>{agreement_text}</b>{time_str}\n"
 
     await message.answer(text, parse_mode="HTML")
+
+@router.message(Command("dispute"))
+async def cmd_dispute(message: types.Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("Укажи ID договоренности или порядковый номер из последнего отчета.\nПример: /dispute 1")
+        return
+
+    # In a real scenario we might map number to ID from session state,
+    # but here we'll assume they pass the ID or we'd need to fetch the last analysis result.
+    # For now, let's look for the agreement by ID if it's long, or by "recent index" if it's small.
+    # To keep it simple, we'll fetch active agreements and use the index.
+    
+    try:
+        idx = int(args[1]) - 1
+        active = await get_active_agreements(message.chat.id)
+        if 0 <= idx < len(active):
+            target_id = active[idx]['id']
+            success, error_code = await dispute_agreement(message.chat.id, target_id)
+            if success:
+                await message.answer(messages.AGREEMENT_DISPUTE_SUCCESS, parse_mode="HTML")
+            else:
+                if error_code == "too_late":
+                    await message.answer(messages.AGREEMENT_DISPUTE_TOO_LATE, parse_mode="HTML")
+                else:
+                    await message.answer(messages.AGREEMENT_DISPUTE_NOT_FOUND, parse_mode="HTML")
+        else:
+            await message.answer(messages.AGREEMENT_DISPUTE_NOT_FOUND, parse_mode="HTML")
+    except ValueError:
+        # Try as direct ID
+        target_id = args[1]
+        success, error_code = await dispute_agreement(message.chat.id, target_id)
+        if success:
+            await message.answer(messages.AGREEMENT_DISPUTE_SUCCESS, parse_mode="HTML")
+        else:
+             await message.answer(messages.AGREEMENT_DISPUTE_NOT_FOUND, parse_mode="HTML")
 
 @router.message(Command("all"))
 async def cmd_all(message: types.Message):

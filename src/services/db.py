@@ -72,7 +72,7 @@ async def log_message(message, override_text=None):
 async def save_agreement(chat_id: int, agreement: dict):
     """
     Saves a new agreement found by AI.
-    agreement: { "text": "...", "users": [...], "created_at": ... }
+    agreement: { "text": "...", "users": [...], "type": "...", "expires_at": "..." }
     """
     chat_id = str(chat_id)
     coll_ref = db.collection("chats").document(chat_id).collection("agreements")
@@ -80,10 +80,65 @@ async def save_agreement(chat_id: int, agreement: dict):
     data = agreement.copy()
     data['status'] = 'active'
     # Ensure timestamp is set to SERVER_TIMESTAMP to avoid AI hallucinated dates
-    # or invalid string formats. We trust the agreement is being created "now" (during analysis).
     data['created_at'] = firestore.SERVER_TIMESTAMP
+    
+    # 15 minutes window for dispute
+    dispute_delta = timedelta(minutes=config.AGREEMENT_DISPUTE_WINDOW_MINUTES)
+    data['can_be_disputed_until'] = datetime.now(timezone.utc) + dispute_delta
+    
+    # Handle expiry if provided by AI, else default 24h
+    if not data.get('expires_at'):
+        data['expires_at'] = datetime.now(timezone.utc) + timedelta(hours=config.AGREEMENT_DEFAULT_LIFESPAN_HOURS)
+    elif isinstance(data['expires_at'], str):
+        try:
+            data['expires_at'] = datetime.fromisoformat(data['expires_at'].replace('Z', '+00:00'))
+        except Exception:
+            data['expires_at'] = datetime.now(timezone.utc) + timedelta(hours=config.AGREEMENT_DEFAULT_LIFESPAN_HOURS)
         
     await coll_ref.add(data)
+
+async def get_agreement_by_id(chat_id: int, agreement_id: str):
+    """Fetches a specific agreement."""
+    doc = await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).get()
+    if doc.exists:
+        data = doc.to_dict()
+        data['id'] = doc.id
+        return data
+    return None
+
+async def dispute_agreement(chat_id: int, agreement_id: str):
+    """
+    Marks an agreement as disputed if within the time window.
+    Returns (success, message).
+    """
+    ag = await get_agreement_by_id(chat_id, agreement_id)
+    if not ag or ag.get('status') != 'active':
+        return False, "not_found"
+    
+    can_dispute_until = ag.get('can_be_disputed_until')
+    if not can_dispute_until:
+        return False, "too_late"
+        
+    # Ensure TZ awareness
+    if can_dispute_until.tzinfo is None:
+        can_dispute_until = can_dispute_until.replace(tzinfo=timezone.utc)
+        
+    if datetime.now(timezone.utc) > can_dispute_until:
+        return False, "too_late"
+        
+    # Success: mark as disputed
+    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update({
+        "status": "disputed"
+    })
+    return True, "ok"
+
+async def update_agreement_status(chat_id: int, agreement_id: str, status: str, reason: str = None):
+    """Updates agreement status (fulfilled/broken)."""
+    update_data = {"status": status}
+    if reason:
+        update_data["resolution_reason"] = reason
+    
+    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update(update_data)
 
 async def get_active_agreements(chat_id: int):
     """

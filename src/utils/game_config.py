@@ -38,6 +38,10 @@ class GameConfig:
     REPORT_NEXT_CONTEXT_LIMIT = 5
     MENTION_CHUNK_SIZE = 50
     
+    # Agreements
+    AGREEMENT_DISPUTE_WINDOW_MINUTES = 15
+    AGREEMENT_DEFAULT_LIFESPAN_HOURS = 24
+
     # Time & Analysis
     TIMEZONE_OFFSET = 3 # Moscow Time (UTC+3)
     ANALYSIS_CUTOFF_HOUR = 4 # Hour to decide if analyzing yesterday or today

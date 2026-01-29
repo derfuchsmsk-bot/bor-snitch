@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
-from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users
+from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users, update_agreement_status
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
 from src.utils.game_config import config
@@ -59,12 +59,14 @@ async def perform_chat_analysis(chat_id: str):
 
     final_result = {
         "offenders": [],
-        "new_agreements": []
+        "new_agreements": [],
+        "resolved_agreements": []
     }
     
     if ai_result:
         final_result["offenders"].extend(ai_result.get("offenders", []))
         final_result["new_agreements"].extend(ai_result.get("new_agreements", []))
+        final_result["resolved_agreements"].extend(ai_result.get("resolved_agreements", []))
         
     final_result["offenders"].extend(afk_offenders)
     
@@ -72,9 +74,19 @@ async def perform_chat_analysis(chat_id: str):
         final_result['date_key'] = today_str
         await save_daily_results(chat_id, final_result)
         
+        # 4. Process new agreements
         new_agreements = final_result.get('new_agreements', [])
         for ag in new_agreements:
             await save_agreement(chat_id, ag)
+            
+        # 5. Process resolved agreements
+        resolved_agreements = final_result.get('resolved_agreements', [])
+        for res in resolved_agreements:
+            res_id = res.get('id')
+            status = res.get('status')
+            reason = res.get('reason')
+            if res_id and status in ['fulfilled', 'broken']:
+                await update_agreement_status(chat_id, res_id, status, reason)
         
         offenders = final_result.get('offenders', [])
         
@@ -103,7 +115,12 @@ async def perform_chat_analysis(chat_id: str):
         if new_agreements:
             text += messages.NEW_AGREEMENTS_TITLE
             for ag in new_agreements:
-                 text += f"📌 {escape(ag.get('text'))}\n"
+                 ag_type = ag.get('type', 'vow')
+                 icon = "🕯"
+                 if ag_type == "pact": icon = "🤝"
+                 elif ag_type == "public": icon = "📢"
+                 text += f"{icon} {escape(ag.get('text'))}\n"
+            text += messages.AGREEMENT_CREATED_FOOTER.format(minutes=config.AGREEMENT_DISPUTE_WINDOW_MINUTES)
                  
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
         
@@ -162,6 +179,7 @@ async def on_startup():
         types.BotCommand(command="report", description="Донос (Reply)"),
         types.BotCommand(command="casino", description="Испытать удачу"),
         types.BotCommand(command="agreements", description="Список договоренностей"),
+        types.BotCommand(command="dispute", description="Оспорить слово пацана"),
         types.BotCommand(command="all", description="Позвать всех"),
     ]
     await bot.set_my_commands(commands)
