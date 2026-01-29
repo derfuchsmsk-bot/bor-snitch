@@ -160,6 +160,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
     {chat_history}
     
     Определи Снитча Дня согласно твоей системной инструкции. Верни THOUGHT PROCESS и FINAL JSON.
+    ВАЖНО: Все описания договоренностей в поле "text" должны быть на РУССКОМ ЯЗЫКЕ.
     """
     
     try:

@@ -140,6 +140,29 @@ async def update_agreement_status(chat_id: int, agreement_id: str, status: str, 
     
     await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update(update_data)
 
+async def update_agreement_text(chat_id: int, agreement_id: str, new_text: str, reason: str = None):
+    """Updates agreement text and optionally adds an update reason."""
+    update_data = {"text": new_text}
+    if reason:
+        update_data["update_reason"] = reason
+    update_data["updated_at"] = firestore.SERVER_TIMESTAMP
+    
+    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update(update_data)
+
+async def get_last_agreement_check(chat_id: str) -> datetime:
+    """Gets the timestamp of the last agreement check."""
+    doc = await db.collection("chats").document(chat_id).get()
+    if doc.exists:
+        data = doc.to_dict()
+        return data.get('last_agreement_check')
+    return None
+
+async def set_last_agreement_check(chat_id: str, ts: datetime):
+    """Sets the timestamp of the last agreement check."""
+    await db.collection("chats").document(chat_id).set({
+        'last_agreement_check': ts
+    }, merge=True)
+
 async def get_active_agreements(chat_id: int):
     """
     Fetches active agreements for the chat.

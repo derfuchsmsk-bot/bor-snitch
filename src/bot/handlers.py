@@ -97,7 +97,9 @@ async def cmd_agreements(message: types.Message):
             if hasattr(expires_at, 'strftime'):
                 time_str = f" (до {expires_at.strftime('%d.%m %H:%M')})"
         
-        text += f"{i}. {status_icon} {icon} <b>{agreement_text}</b>{time_str}\n"
+        users = ag.get('users', [])
+        users_str = ", ".join([f"<b>{escape(u)}</b>" for u in users])
+        text += f"{i}. {status_icon} {icon} {users_str}: <b>{agreement_text}</b>{time_str}\n"
 
     await message.answer(text, parse_mode="HTML")
 
