@@ -169,14 +169,23 @@ async def get_active_agreements(chat_id: int):
     """
     chat_id = str(chat_id)
     coll_ref = db.collection("chats").document(chat_id).collection("agreements")
-    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))\
-                    .order_by("created_at", direction=firestore.Query.ASCENDING)
+    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))
     
     agreements = []
     async for doc in query.stream():
         data = doc.to_dict()
         data['id'] = doc.id
         agreements.append(data)
+    
+    # Sort in memory to avoid needing composite index
+    # Handle cases where created_at might be None or missing
+    def get_sort_key(x):
+        ts = x.get('created_at')
+        if not ts:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return ts
+
+    agreements.sort(key=get_sort_key)
     return agreements
 
 async def check_afk_users(chat_id: int):
