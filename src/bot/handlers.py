@@ -98,12 +98,12 @@ async def cmd_agreements(message: types.Message):
                 time_str = f" (до {expires_at.strftime('%d.%m %H:%M')})"
         
         users = ag.get('users', [])
-        users_str = ", ".join([f"<b>{escape(u)}</b>" for u in users])
-        text += f"{i}. {status_icon} {icon} {users_str}: <b>{agreement_text}</b>{time_str}\n"
+        users_str = ", ".join([f"<b>{escape(u if u.startswith('@') else '@'+u)}</b>" for u in users])
+        text += f"{i}. {status_icon} {icon} {users_str}: <b>{agreement_text}</b>{time_str} (Оспорить: /disput {i})\n"
 
     await message.answer(text, parse_mode="HTML")
 
-@router.message(Command("dispute"))
+@router.message(Command("dispute", "disput"))
 async def cmd_dispute(message: types.Message):
     args = message.text.split()
     if len(args) < 2:

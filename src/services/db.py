@@ -169,7 +169,8 @@ async def get_active_agreements(chat_id: int):
     """
     chat_id = str(chat_id)
     coll_ref = db.collection("chats").document(chat_id).collection("agreements")
-    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))
+    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))\
+                    .order_by("created_at", direction=firestore.Query.ASCENDING)
     
     agreements = []
     async for doc in query.stream():

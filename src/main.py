@@ -125,6 +125,7 @@ async def perform_chat_analysis(chat_id: str):
         
         if new_agreements:
             text += messages.NEW_AGREEMENTS_TITLE
+            all_active = await get_active_agreements(chat_id)
             for ag in new_agreements:
                  ag_type = ag.get('type', 'vow')
                  icon = "🕯"
@@ -132,8 +133,20 @@ async def perform_chat_analysis(chat_id: str):
                  elif ag_type == "public": icon = "📢"
                  
                  users = ag.get('users', [])
-                 users_str = ", ".join([f"<b>{escape(u)}</b>" for u in users])
-                 text += f"{icon} {users_str}: {escape(ag.get('text'))}\n"
+                 users_str = ", ".join([f"<b>{escape(u if u.startswith('@') else '@'+u)}</b>" for u in users])
+                 
+                 # Find index in all_active
+                 ag_text = ag.get('text')
+                 idx = -1
+                 for i, active_ag in enumerate(all_active, 1):
+                     if active_ag.get('text') == ag_text:
+                         idx = i
+                         break
+                 
+                 text += f"{icon} {users_str}: {escape(ag_text)}"
+                 if idx != -1:
+                     text += f" (Оспорить: /disput {idx})"
+                 text += "\n"
             text += messages.AGREEMENT_CREATED_FOOTER.format(minutes=config.AGREEMENT_DISPUTE_WINDOW_MINUTES)
 
         # 6. Add resolved agreements to summary
@@ -202,13 +215,28 @@ async def perform_agreement_check(chat_id: str):
         text += messages.NEW_AGREEMENTS_TITLE
         for ag in new_agreements:
             await save_agreement(chat_id, ag)
+        
+        all_active = await get_active_agreements(chat_id)
+        for ag in new_agreements:
             ag_type = ag.get('type', 'vow')
             icon = "🕯"
             if ag_type == "pact": icon = "🤝"
             elif ag_type == "public": icon = "📢"
             users = ag.get('users', [])
-            users_str = ", ".join([f"<b>{escape(u)}</b>" for u in users])
-            text += f"{icon} {users_str}: {escape(ag.get('text'))}\n"
+            users_str = ", ".join([f"<b>{escape(u if u.startswith('@') else '@'+u)}</b>" for u in users])
+            
+            # Find index in all_active
+            ag_text = ag.get('text')
+            idx = -1
+            for i, active_ag in enumerate(all_active, 1):
+                if active_ag.get('text') == ag_text:
+                    idx = i
+                    break
+            
+            text += f"{icon} {users_str}: {escape(ag_text)}"
+            if idx != -1:
+                text += f" (Оспорить: /disput {idx})"
+            text += "\n"
         text += messages.AGREEMENT_CREATED_FOOTER.format(minutes=config.AGREEMENT_DISPUTE_WINDOW_MINUTES)
 
     if updated_agreements:
