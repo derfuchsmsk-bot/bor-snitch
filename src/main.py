@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
 from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users, update_agreement_status, get_agreement_by_id, update_agreement_text, get_last_agreement_check, set_last_agreement_check
+from google.cloud import firestore
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
 from src.utils.game_config import config
@@ -25,6 +26,31 @@ async def perform_chat_analysis(chat_id: str):
     Core logic for daily analysis.
     """
     moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+    now_utc = datetime.now(timezone.utc)
+    
+    # 0. Distributed Lock to prevent concurrent analysis for the same chat
+    # We use a lock document with a TTL (5 minutes)
+    lock_ref = db.collection("chats").document(chat_id).collection("locks").document("daily_analysis")
+    
+    try:
+        lock_doc = await lock_ref.get()
+        if lock_doc.exists:
+            lock_data = lock_doc.to_dict()
+            lock_time = lock_data.get("timestamp")
+            if lock_time:
+                # Ensure TZ awareness for comparison
+                if lock_time.tzinfo is None:
+                    lock_time = lock_time.replace(tzinfo=timezone.utc)
+                
+                if now_utc - lock_time < timedelta(minutes=5):
+                    logging.warning(f"Analysis for chat {chat_id} is already in progress (Locked {now_utc - lock_time} ago). Skipping.")
+                    return {"status": "locked"}
+        
+        # Acquire lock
+        await lock_ref.set({"timestamp": firestore.SERVER_TIMESTAMP})
+    except Exception as e:
+        logging.error(f"Locking error for chat {chat_id}: {e}")
+        # Proceed anyway if lock check fails, to avoid deadlocks
     now_msk = datetime.now(moscow_tz)
     
     # Determine the date we are analyzing.
@@ -177,6 +203,12 @@ async def perform_chat_analysis(chat_id: str):
                 text += f"📝 {orig_users}: {escape(new_text)}\n"
                  
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+
+    # Release lock
+    try:
+        await lock_ref.delete()
+    except Exception as e:
+        logging.error(f"Failed to release lock for chat {chat_id}: {e}")
 
     return {"status": "analyzed", "result": final_result}
 

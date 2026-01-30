@@ -371,83 +371,88 @@ async def get_subsequent_messages(chat_id: int, after_timestamp: datetime, limit
 
 async def save_daily_results(chat_id: int, analysis_result: dict):
     """
-    Saves the result of the daily analysis (list of offenders).
+    Saves the result of the daily analysis (list of offenders) atomically.
+    Uses Firestore Transaction to prevent race conditions.
     analysis_result: { "offenders": [...], "date_key": ... }
     """
     str_chat_id = str(chat_id)
     date_key = analysis_result['date_key']
-    
-    daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
     current_season = get_current_season_id()
     
-    # 1. Check for existing results for this date (Idempotency / Re-run logic)
-    existing_doc = await daily_ref.get()
-    
-    if existing_doc.exists:
-        logging.info(f"Re-analyzing date {date_key} for chat {chat_id}. Reverting previous points.")
-        old_data = existing_doc.to_dict()
-        old_offenders = old_data.get('offenders', [])
+    daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
+
+    @firestore.async_transactional
+    async def _save_in_transaction(transaction, daily_ref, analysis_result, str_chat_id, date_key, current_season):
+        # 1. Read existing daily record
+        existing_doc = await daily_ref.get(transaction=transaction)
+        old_offenders_map = {}
+        if existing_doc.exists:
+            old_data = existing_doc.to_dict()
+            for off in old_data.get('offenders', []):
+                uid = str(off.get('user_id'))
+                if uid:
+                    old_offenders_map[uid] = off
+
+        # 2. Identify all users to update
+        new_offenders = analysis_result.get('offenders', [])
+        new_offenders_map = {str(off.get('user_id')): off for off in new_offenders if off.get('user_id')}
         
-        # Revert old points
-        for offender in old_offenders:
-            user_id = offender.get('user_id')
-            if not user_id: continue
+        all_user_ids = set(old_offenders_map.keys()) | set(new_offenders_map.keys())
+        
+        # 3. Read all user stats
+        user_stats_refs = {uid: db.collection("chats").document(str_chat_id).collection("user_stats").document(uid) for uid in all_user_ids}
+        # In Firestore Transactions, we must perform all reads before any writes.
+        user_stats_docs = {}
+        for uid, ref in user_stats_refs.items():
+            user_stats_docs[uid] = await ref.get(transaction=transaction)
+
+        # 4. Calculate updates
+        for uid in all_user_ids:
+            stats_doc = user_stats_docs[uid]
+            ref = user_stats_refs[uid]
             
-            user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(user_id))
-            doc = await user_stats_ref.get()
+            current_points = 0
+            current_wins = 0
+            username = "Unknown"
             
-            if doc.exists:
-                data = doc.to_dict()
+            if stats_doc.exists:
+                data = stats_doc.to_dict()
                 if data.get('season_id') == current_season:
-                    # Subtract points
-                    reverted_points = max(0, data.get("total_points", 0) - offender.get('points', 0))
-                    # Decrement snitch count (assuming 1 win/violation per daily record)
-                    reverted_wins = max(0, data.get("snitch_count", 0) - 1)
-                    reverted_rank = calculate_rank(reverted_points)
-                    
-                    await user_stats_ref.update({
-                        "total_points": reverted_points,
-                        "snitch_count": reverted_wins,
-                        "current_rank": reverted_rank
-                    })
+                    current_points = data.get("total_points", 0)
+                    current_wins = data.get("snitch_count", 0)
+                    username = data.get("username", username)
 
-    # 2. Save the NEW daily result record
-    await daily_ref.set(analysis_result)
-    
-    # 3. Update user stats for EACH offender (New points)
-    offenders = analysis_result.get('offenders', [])
-    
-    for offender in offenders:
-        user_id = offender.get('user_id')
-        if not user_id:
-            continue
+            # Revert old points if user was in previous analysis
+            if uid in old_offenders_map:
+                old_offender = old_offenders_map[uid]
+                current_points = max(0, current_points - old_offender.get('points', 0))
+                current_wins = max(0, current_wins - 1)
+
+            # Add new points if user is in current analysis
+            if uid in new_offenders_map:
+                new_offender = new_offenders_map[uid]
+                current_points += new_offender.get('points', 0)
+                current_wins += 1
+                username = new_offender.get('username', username)
+
+            new_rank = calculate_rank(current_points)
             
-        user_stats_ref = db.collection("chats").document(str_chat_id).collection("user_stats").document(str(user_id))
-        
-        # Get current stats
-        doc = await user_stats_ref.get()
-        
-        current_points = 0
-        current_wins = 0 # Count as "Days with violations"
-        
-        if doc.exists:
-            data = doc.to_dict()
-            if data.get('season_id') == current_season:
-                current_points = data.get("total_points", 0)
-                current_wins = data.get("snitch_count", 0)
-        
-        new_points = current_points + offender.get('points', 0)
-        new_wins = current_wins + 1
-        new_rank = calculate_rank(new_points)
+            # Prepare update
+            transaction.set(ref, {
+                "username": username,
+                "season_id": current_season,
+                "snitch_count": current_wins,
+                "total_points": current_points,
+                "current_rank": new_rank,
+                "last_win_date": date_key
+            }, merge=True)
 
-        await user_stats_ref.set({
-            "username": offender['username'],
-            "season_id": current_season,
-            "snitch_count": new_wins,
-            "total_points": new_points,
-            "current_rank": new_rank,
-            "last_win_date": date_key
-        }, merge=True)
+        # 5. Save the daily result record
+        transaction.set(daily_ref, analysis_result)
+        
+    # Execute the transaction
+    transaction = db.transaction()
+    await _save_in_transaction(transaction, daily_ref, analysis_result, str_chat_id, date_key, current_season)
 
 def calculate_rank(points):
     """
