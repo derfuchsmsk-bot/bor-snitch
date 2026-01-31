@@ -75,6 +75,8 @@ async def cmd_rules(message: types.Message):
 
 @router.message(Command("agreements"))
 async def cmd_agreements(message: types.Message):
+    if not config.ENABLE_AGREEMENTS:
+        return
     agreements = await get_active_agreements(message.chat.id)
     if not agreements:
         await message.answer("🤝 <b>Договоренности:</b>\n\nНет действующих договоренностей. Живите спокойно... пока что.", parse_mode="HTML")
@@ -105,6 +107,8 @@ async def cmd_agreements(message: types.Message):
 
 @router.message(Command("dispute", "disput"))
 async def cmd_dispute(message: types.Message):
+    if not config.ENABLE_AGREEMENTS:
+        return
     args = message.text.split()
     if len(args) < 2:
         await message.answer("Укажи ID договоренности или порядковый номер из последнего отчета.\nПример: /dispute 1")

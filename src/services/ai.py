@@ -132,7 +132,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
     chat_history += "LOG END"
 
     agreements_text = "Нет действующих договоренностей."
-    if active_agreements:
+    if config.ENABLE_AGREEMENTS and active_agreements:
         agreements_text = ""
         for ag in active_agreements:
              ts = ag.get('created_at')
@@ -150,17 +150,21 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
     except Exception:
         full_date_str = date_str or 'Unknown'
 
-    prompt = f"""
-    СЕГОДНЯШНЯЯ ДАТА: {full_date_str}
-    
+    agreements_section = ""
+    if config.ENABLE_AGREEMENTS:
+        agreements_section = f"""
     ACTIVE AGREEMENTS (Проверь на нарушения):
     {agreements_text}
-    
+    """
+
+    prompt = f"""
+    СЕГОДНЯШНЯЯ ДАТА: {full_date_str}
+    {agreements_section}
     Вот лог чата за сегодня:
     {chat_history}
     
     Определи Снитча Дня согласно твоей системной инструкции. Верни THOUGHT PROCESS и FINAL JSON.
-    ВАЖНО: Все описания договоренностей в поле "text" должны быть на РУССКОМ ЯЗЫКЕ.
+    {"ВАЖНО: Все описания договоренностей в поле 'text' должны быть на РУССКОМ ЯЗЫКЕ." if config.ENABLE_AGREEMENTS else ""}
     """
     
     try:

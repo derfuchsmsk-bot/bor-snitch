@@ -216,6 +216,9 @@ async def perform_agreement_check(chat_id: str):
     """
     Checks for new agreements every 30 minutes.
     """
+    if not config.ENABLE_AGREEMENTS:
+        return
+        
     now_utc = datetime.now(timezone.utc)
     last_check = await get_last_agreement_check(chat_id)
     
@@ -352,13 +355,18 @@ async def on_startup():
         types.BotCommand(command="rules", description="Кодекс Снитча"),
         types.BotCommand(command="report", description="Донос (Reply)"),
         types.BotCommand(command="casino", description="Испытать удачу"),
-        types.BotCommand(command="agreements", description="Список договоренностей"),
-        types.BotCommand(command="dispute", description="Оспорить слово пацана"),
         types.BotCommand(command="all", description="Позвать всех"),
     ]
+    if config.ENABLE_AGREEMENTS:
+        commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
+        commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
+        
     await bot.set_my_commands(commands)
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
-    scheduler.add_job(scheduled_agreement_check, 'interval', minutes=30)
+    
+    if config.ENABLE_AGREEMENTS:
+        scheduler.add_job(scheduled_agreement_check, 'interval', minutes=30)
+        
     scheduler.start()
 
 dp = Dispatcher()
