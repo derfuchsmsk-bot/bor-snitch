@@ -29,9 +29,9 @@ class GameConfig:
     # Ranks
     RANK_NORMAL = (0, 49)
     RANK_SHNYR = (50, 249)
-    RANK_GOAT = (250, 749)
-    RANK_OFFENDED = (750, 1499)
-    RANK_PIERCED = (1500, float('inf'))
+    RANK_GOAT = (250, 499)
+    RANK_OFFENDED = (500, 999)
+    RANK_PIERCED = (1000, float('inf'))
 
     # Context & Limits
     REPORT_CONTEXT_LIMIT = 25
