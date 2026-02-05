@@ -23,7 +23,7 @@ class GameConfig:
     IGNORE_DAYS_BEFORE_PENALTY = 2
     
     # Random Cynical Comments
-    CYNICAL_COMMENT_CHANCE = 0.5 # 50% chance to comment after analysis
+    CYNICAL_COMMENT_CHANCE = 0.05 # 5% chance
     CYNICAL_COMMENT_COOLDOWN_SECONDS = 30 # 30 seconds
 
     # Ranks
