@@ -34,3 +34,5 @@ archive/processed_Сайонара_тур_МИНСК-КАЗАНЬ-МИНСК-Л�
 archive/LORE.md
 SAYONARA_LORE.md
 plans/bor-snitch.code-workspace
+plans/LORE_UPDATE_FEB_2026.md
+src/scripts/generate_monthly_lore.py
