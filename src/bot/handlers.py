@@ -391,9 +391,15 @@ async def handle_messages(message: types.Message):
             now = datetime.now()
             last_time = last_comment_time.get(chat_id)
             
-            if not last_time or (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS:
+            # Check for direct mention
+            is_mentioned = "@snitch_sayonara_bot" in message.text.lower()
+            
+            # If mentioned, ignore cooldown. Otherwise check cooldown.
+            if is_mentioned or (not last_time or (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS):
                 user_stats = await get_user_stats(chat_id, message.from_user.id)
-                if should_comment(message, user_stats):
+                
+                # If mentioned, force reply. Otherwise roll dice.
+                if is_mentioned or should_comment(message, user_stats):
                     context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
                     username = message.from_user.username or message.from_user.first_name
                     comment = await generate_cynical_comment(context_msgs, message.text, username)
