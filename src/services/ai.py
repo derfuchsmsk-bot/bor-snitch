@@ -88,21 +88,23 @@ async def validate_report(target_text, context_msgs=None):
         logging.error(f"Error during report validation: {e}")
         return {"valid": False, "reason": f"AI Error: {str(e)}"}
 
-async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
+async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future_logs=None):
     """
     Sends chat logs to Gemini and returns the winner analysis.
+    future_logs: Messages from the start of the NEXT day (for context only, to prevent false positives on ignores).
     """
     if not logs:
         return None
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
-    id_map = {log.get('message_id'): log.get('username') for log in logs if log.get('message_id')}
+    # Map for reply resolution (includes future logs for context)
+    all_logs = logs + (future_logs or [])
+    id_map = {log.get('message_id'): log.get('username') for log in all_logs if log.get('message_id')}
 
-    chat_history = "LOG START\n"
     moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
-    
-    for log in logs:
+
+    def format_log_entry(log):
         ts = log['timestamp']
         if hasattr(ts, 'astimezone'):
             if ts.tzinfo is None:
@@ -127,9 +129,20 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
             report_tag = f" [REPORTED BY USER: {reason}]"
             if points_awarded > 0:
                 report_tag += f" [POINTS ALREADY AWARDED ({points_awarded}) - DO NOT SCORE]"
+        
+        return f"[{time_str}] {log['username']} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}"
 
-        chat_history += f"[{time_str}] {log['username']} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}\n"
+    chat_history = "LOG START (MESSAGES TO JUDGE)\n"
+    for log in logs:
+        chat_history += format_log_entry(log) + "\n"
     chat_history += "LOG END"
+
+    future_context_str = ""
+    if future_logs:
+        future_context_str = "\nFUTURE CONTEXT (DO NOT JUDGE, ONLY FOR REFERENCE):\n"
+        for log in future_logs:
+            future_context_str += format_log_entry(log) + "\n"
+        future_context_str += "END FUTURE CONTEXT\n"
 
     agreements_text = "Нет действующих договоренностей."
     if config.ENABLE_AGREEMENTS and active_agreements:
@@ -162,6 +175,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None):
     {agreements_section}
     Вот лог чата за сегодня:
     {chat_history}
+    {future_context_str}
     
     Определи Снитча Дня согласно твоей системной инструкции. Верни THOUGHT PROCESS и FINAL JSON.
     {"ВАЖНО: Все описания договоренностей в поле 'text' должны быть на РУССКОМ ЯЗЫКЕ." if config.ENABLE_AGREEMENTS else ""}

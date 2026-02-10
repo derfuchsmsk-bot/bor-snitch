@@ -71,10 +71,14 @@ async def perform_chat_analysis(chat_id: str):
     
     logging.info(f"Starting analysis for chat {chat_id}. Window (MSK): {start_dt_msk} to {end_dt_msk}")
     logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
+
+    # Fetch future context (next 4 hours) to check if conversations continued
+    future_end_dt_utc = end_dt_utc + timedelta(hours=4)
+    future_logs = await get_logs_for_time_range(chat_id, end_dt_utc, future_end_dt_utc)
     
     ai_result = None
     if logs:
-        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str)
+        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str, future_logs=future_logs)
     
     afk_offenders = await check_afk_users(chat_id)
     
