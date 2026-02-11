@@ -1,4 +1,5 @@
 from google.cloud import firestore
+from ..utils.config import settings
 from datetime import datetime, timezone, timedelta
 import logging
 from ..utils.game_config import config
@@ -9,7 +10,7 @@ def get_current_season_id():
 
 # Initialize Firestore Async Client
 # Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var or running in GCP
-db = firestore.AsyncClient()
+db = firestore.AsyncClient(project=settings.GCP_PROJECT_ID)
 
 async def log_message(message, override_text=None):
     """
