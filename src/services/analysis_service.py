@@ -60,7 +60,9 @@ class AnalysisService:
         start_dt_utc = start_dt_msk.astimezone(timezone.utc)
         
         today_str = end_dt_msk.strftime("%Y-%m-%d")
-        active_agreements = await get_active_agreements(chat_id)
+        active_agreements = []
+        if config.ENABLE_AGREEMENTS:
+            active_agreements = await get_active_agreements(chat_id)
         
         logging.info(f"Starting analysis for chat {chat_id}. Window (MSK): {start_dt_msk} to {end_dt_msk}")
         logs = await get_logs_for_time_range(chat_id, start_dt_utc, end_dt_utc)
