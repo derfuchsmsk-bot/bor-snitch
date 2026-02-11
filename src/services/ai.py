@@ -112,6 +112,10 @@ async def validate_report(target_text, context_msgs=None, chat_id=None):
         
         for msg in context_msgs:
             name = msg.get('username', 'Unknown')
+            # Check for bot marker
+            if msg.get('is_bot') or name == "YOU (Snitch Bot)":
+                 name = "YOU (Snitch Bot)"
+
             txt = msg.get('text', '')
             
             ts = msg.get('timestamp')
@@ -190,7 +194,11 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
             if points_awarded > 0:
                 report_tag += f" [POINTS ALREADY AWARDED ({points_awarded}) - DO NOT SCORE]"
         
-        return f"[{time_str}] {log['username']} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}"
+        username = log['username']
+        if log.get('is_bot') or username == "YOU (Snitch Bot)":
+            username = "YOU (Snitch Bot)"
+
+        return f"[{time_str}] {username} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}"
 
     chat_history = "LOG START (MESSAGES TO JUDGE)\n"
     for log in logs:
@@ -296,7 +304,10 @@ async def summarize_day(chat_id: int, date_key: str, logs: list):
     # Format logs for summarization
     formatted_logs = ""
     for log in logs:
-        formatted_logs += f"- {log.get('username')}: {log.get('text')}\n"
+        username = log.get('username')
+        if log.get('is_bot') or username == "YOU (Snitch Bot)":
+            username = "YOU (Snitch Bot)"
+        formatted_logs += f"- {username}: {log.get('text')}\n"
 
     prompt = f"""
     ДАТА: {date_key}
@@ -334,6 +345,9 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     context_str = ""
     for msg in context_msgs:
         name = msg.get('username', 'Unknown')
+        if msg.get('is_bot') or name == "YOU (Snitch Bot)":
+            name = "YOU (Snitch Bot)"
+
         txt = msg.get('text', '')
         if txt == current_text:
             continue

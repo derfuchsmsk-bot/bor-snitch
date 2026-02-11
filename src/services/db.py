@@ -49,6 +49,7 @@ async def log_message(message, override_text=None):
         "user_id": int(user_id),
         "username": message.from_user.username or message.from_user.first_name,
         "full_name": message.from_user.full_name,
+        "is_bot": getattr(message.from_user, 'is_bot', False),
         "text": text_content,
         "timestamp": message.date,
         "date_key": date_key,

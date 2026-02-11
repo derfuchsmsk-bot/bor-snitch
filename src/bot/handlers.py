@@ -456,15 +456,18 @@ async def handle_messages(message: types.Message):
                 
                 # If mentioned, force reply. Otherwise roll dice.
                 if is_mentioned or should_comment(comment_text, user_stats):
-                    context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
+                    # Increased context limit to 10 for better conversation history awareness
+                    context_msgs = await get_recent_messages(chat_id, message.date, limit=10)
                     username = message.from_user.username or message.from_user.first_name
                     comment = await generate_cynical_comment(context_msgs, comment_text, username, chat_id=chat_id)
                     
                     if comment:
-                        # Detection of corrections in the comment text if we want to be fancy,
-                        # but for now let's check the USER'S input for "wrong/неправда"
-                        
-                        await message.reply(comment)
+                        sent_msg = await message.reply(comment)
+                        try:
+                            # Log bot's own responses to Firestore
+                            await log_message(sent_msg)
+                        except Exception as e:
+                            logging.error(f"Failed to log bot message: {e}")
                         last_comment_time[chat_id] = now
 
                 # Correction Loop: If user says "Это неправда" or "Ты врешь" etc.
