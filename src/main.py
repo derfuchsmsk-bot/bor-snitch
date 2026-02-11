@@ -162,7 +162,7 @@ async def weekly_decay(request: Request, auth=Depends(verify_jwt)):
     
 @app.get("/token")
 @limiter.limit("5/minute")
-async def get_token(x_secret_token: str = Header(None, alias="X-Secret-Token")):
+async def get_token(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
     if x_secret_token != settings.SECRET_TOKEN:
          raise HTTPException(status_code=403, detail="Invalid secret")
     
