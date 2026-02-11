@@ -326,17 +326,21 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     for msg in context_msgs:
         name = msg.get('username', 'Unknown')
         txt = msg.get('text', '')
+        if txt == current_text:
+            continue
         context_str += f"- {name}: {txt}\n"
         
     prompt = f"""
-    КОНТЕКСТ:
-    {context_str}
-    
-    ПОСЛЕДНЕЕ СООБЩЕНИЕ (от пользователя {current_username}):
-    "{current_text}"
-    
-    Напиши комментарий согласно инструкции.
-    """
+КОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:
+{context_str}
+
+АКТУАЛЬНОЕ СООБЩЕНИЕ, НА КОТОРОЕ НУЖНО ОТВЕТИТЬ (от пользователя {current_username}):
+"{current_text}"
+
+ИНСТРУКЦИЯ: Напиши ОДНО короткое, едкое и живое предложение, которое будет НАТИВНЫМ продолжением этого диалога.
+Избегай упоминаний лора (штора, плитка, пуэр, вахта), если только они не упомянуты в самом сообщении.
+Не используй клише про "обучение", "волю" или "репорты". Отвечай как человек человеку.
+"""
     
     try:
         lore_json = await LoreService.get_lore_as_json(chat_id) if chat_id else "{}"
