@@ -10,6 +10,7 @@ from src.utils.prompts import (
     FEEDBACK_ANALYSIS_PROMPT
 )
 from src.services.lore_service import LoreService
+from src.services.fact_service import FactService
 import json
 import logging
 import re
@@ -240,11 +241,18 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
     """
     
     try:
-        lore_json = await LoreService.get_lore_as_json(chat_id) if chat_id else "{}"
+        lore_full = await LoreService.get_lore(chat_id) if chat_id else {}
+        lore_core = lore_full.get('core', lore_full)
+        lore_json = json.dumps(lore_core, ensure_ascii=False, indent=2)
+        
+        facts_str = await FactService.get_facts_as_str(chat_id) if chat_id else ""
+        context_str = lore_full.get('current_context', "")
+        
         from src.services.learning import LearningService
         lessons = await LearningService.get_active_lessons(chat_id) if chat_id else []
+        
         response = await model.generate_content_async(
-            contents=[get_system_prompt(lore_json, lessons), prompt],
+            contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
             generation_config={"response_mime_type": "text/plain"}
         )
         
@@ -343,9 +351,15 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 """
     
     try:
-        lore_json = await LoreService.get_lore_as_json(chat_id) if chat_id else "{}"
+        lore_full = await LoreService.get_lore(chat_id) if chat_id else {}
+        lore_core = lore_full.get('core', lore_full)
+        lore_json = json.dumps(lore_core, ensure_ascii=False, indent=2)
+        
+        facts_str = await FactService.get_facts_as_str(chat_id) if chat_id else ""
+        context_str = lore_full.get('current_context', "")
+        
         response = await model.generate_content_async(
-            contents=[get_cynical_comment_prompt(lore_json), prompt]
+            contents=[get_cynical_comment_prompt(lore_json, facts_str, context_str), prompt]
         )
         return response.text.strip()
     except Exception as e:

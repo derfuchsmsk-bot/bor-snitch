@@ -3,6 +3,7 @@ from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users, dispute_agreement
 from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
+from ..services.fact_service import FactService
 from ..utils.text import escape
 from ..utils.game_config import config
 from ..utils import messages
@@ -313,6 +314,29 @@ async def cmd_casino(message: types.Message):
     await record_gamble_result(chat_id, user_id, new_points, today_str)
     await message.reply(text, parse_mode="HTML")
 
+@router.message(Command("remember"))
+async def cmd_remember(message: types.Message):
+    """
+    Manually add a fact to verified_facts.
+    Example: /remember Vanya has a new car
+    Or reply to a message with /remember
+    """
+    fact_text = ""
+    if message.reply_to_message:
+        fact_text = message.reply_to_message.text or message.reply_to_message.caption
+    else:
+        fact_text = message.text.replace("/remember", "").strip()
+
+    if not fact_text:
+        await message.answer("❌ Что запомнить? Напиши после команды или ответь на сообщение.")
+        return
+
+    success = await FactService.add_fact(message.chat.id, fact_text, source=f"user_{message.from_user.id}")
+    if success:
+        await message.reply("✅ Запомнил. Теперь это истина.")
+    else:
+        await message.reply("❌ Не удалось запомнить. Видимо, я перегружен.")
+
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):
     old_emojis = {r.emoji for r in reaction.old_reaction if hasattr(r, 'emoji')}
@@ -423,7 +447,21 @@ async def handle_messages(message: types.Message):
                     comment = await generate_cynical_comment(context_msgs, comment_text, username, chat_id=chat_id)
                     
                     if comment:
+                        # Detection of corrections in the comment text if we want to be fancy,
+                        # but for now let's check the USER'S input for "wrong/неправда"
+                        
                         await message.reply(comment)
                         last_comment_time[chat_id] = now
+
+                # Correction Loop: If user says "Это неправда" or "Ты врешь" etc.
+                correction_keywords = ["неправда", "врешь", "забудь", "ошибка", "wrong", "lie", "hallucination"]
+                if is_mentioned and any(kw in comment_text.lower() for kw in correction_keywords):
+                    # Try to find what exactly was wrong.
+                    # For simplicity, we remove the last mentioned fact if it's a direct reply to bot
+                    if message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id:
+                        # We don't know exactly WHICH fact was wrong, but we can log it or
+                        # just acknowledge that the bot might have hallucinated.
+                        # Real implementation would use AI to extract the "wrong" fact.
+                        await message.reply("🤐 Понял, завязываю галлюцинировать. Если я сказал что-то не то — сорян.")
         except Exception as e:
             logging.error(f"Error in cynical comment logic: {e}")
