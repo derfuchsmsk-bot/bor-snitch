@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     GCP_PROJECT_ID: str
     GCP_LOCATION: str = "us-central1"
     SECRET_TOKEN: str
+    JWT_SECRET: str = "change-me-in-production"
     LORE_BUCKET_NAME: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

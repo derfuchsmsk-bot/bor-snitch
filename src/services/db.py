@@ -1,3 +1,4 @@
+import asyncio
 from google.cloud import firestore
 from ..utils.config import settings
 from datetime import datetime, timezone, timedelta
@@ -171,7 +172,9 @@ async def get_active_agreements(chat_id: int):
     """
     chat_id = str(chat_id)
     coll_ref = db.collection("chats").document(chat_id).collection("agreements")
-    query = coll_ref.where(filter=firestore.FieldFilter("status", "==", "active"))
+    query = coll_ref.where(
+        filter=firestore.FieldFilter("status", "==", "active")
+    ).order_by("created_at", direction=firestore.Query.ASCENDING)
     
     agreements = []
     async for doc in query.stream():
@@ -179,15 +182,6 @@ async def get_active_agreements(chat_id: int):
         data['id'] = doc.id
         agreements.append(data)
     
-    # Sort in memory to avoid needing composite index
-    # Handle cases where created_at might be None or missing
-    def get_sort_key(x):
-        ts = x.get('created_at')
-        if not ts:
-            return datetime.min.replace(tzinfo=timezone.utc)
-        return ts
-
-    agreements.sort(key=get_sort_key)
     return agreements
 
 async def check_afk_users(chat_id: int):
@@ -317,7 +311,8 @@ async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: date
     
     # Query: timestamp >= start_dt AND timestamp < end_dt
     query = messages_ref.where(filter=firestore.FieldFilter("timestamp", ">=", start_dt))\
-                        .where(filter=firestore.FieldFilter("timestamp", "<", end_dt))
+                        .where(filter=firestore.FieldFilter("timestamp", "<", end_dt))\
+                        .order_by("timestamp", direction=firestore.Query.ASCENDING)
     
     logs = []
     async for doc in query.stream():
@@ -325,8 +320,6 @@ async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: date
         data['message_id'] = doc.id
         logs.append(data)
         
-    # Sort by timestamp
-    logs.sort(key=lambda x: x['timestamp'])
     return logs
 
 async def get_recent_messages(chat_id: int, before_timestamp: datetime, limit: int = 5):
@@ -404,9 +397,11 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
         # 3. Read all user stats
         user_stats_refs = {uid: db.collection("chats").document(str_chat_id).collection("user_stats").document(uid) for uid in all_user_ids}
         # In Firestore Transactions, we must perform all reads before any writes.
-        user_stats_docs = {}
-        for uid, ref in user_stats_refs.items():
-            user_stats_docs[uid] = await ref.get(transaction=transaction)
+        # Use asyncio.gather for parallel reads to optimize performance.
+        uids = list(user_stats_refs.keys())
+        tasks = [user_stats_refs[uid].get(transaction=transaction) for uid in uids]
+        results = await asyncio.gather(*tasks)
+        user_stats_docs = dict(zip(uids, results))
 
         # 4. Calculate updates
         for uid in all_user_ids:
@@ -649,16 +644,21 @@ async def update_edited_message(message):
     await doc_ref.set(update_data, merge=True)
     logging.debug(f"Message {msg_id} updated successfully.")
 
-async def get_chat_users(chat_id: int):
+async def get_chat_users(chat_id: int, limit: int = 100, cursor=None):
     """
-    Fetches all users who have stats in the chat.
-    Used for the /all command.
+    Fetches users who have stats in the chat with pagination.
+    Used for the /all command and management.
     """
     chat_id = str(chat_id)
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
+    query = stats_ref.order_by("__name__").limit(limit)
+    if cursor:
+        query = query.start_after(cursor)
+    
     users = []
-    async for doc in stats_ref.stream():
+    last_doc = None
+    async for doc in query.stream():
         data = doc.to_dict()
         user_id = doc.id
         username = data.get('username')
@@ -669,4 +669,23 @@ async def get_chat_users(chat_id: int):
             "username": username,
             "full_name": full_name
         })
-    return users
+        last_doc = doc
+    return users, last_doc
+
+async def get_all_chats(limit: int = 20, cursor=None):
+    """
+    Fetches chats with pagination.
+    """
+    chats_ref = db.collection("chats")
+    query = chats_ref.order_by("__name__").limit(limit)
+    if cursor:
+        query = query.start_after(cursor)
+    
+    chats = []
+    last_doc = None
+    async for doc in query.stream():
+        data = doc.to_dict()
+        data['id'] = doc.id
+        chats.append(data)
+        last_doc = doc
+    return chats, last_doc

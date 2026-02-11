@@ -1,5 +1,12 @@
 import vertexai
 from vertexai.generative_models import GenerativeModel, SafetySetting, Part
+import logging
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type
+)
 from src.utils.config import settings
 from src.utils.game_config import config
 from src.utils.prompts import (
@@ -27,6 +34,15 @@ if settings.GCP_LOCATION != "global":
     init_params["api_transport"] = "grpc"
 
 vertexai.init(**init_params)
+
+# Cache for cynical comments: (chat_id, current_text) -> comment
+# TTL: 1 hour, Max size: 1000 entries
+# We use a simple dict if cachetools is not installed, but roadmap says introduce it
+try:
+    from cachetools import TTLCache
+    comment_cache = TTLCache(maxsize=1000, ttl=3600)
+except ImportError:
+    comment_cache = {}
 
 def extract_json(text: str) -> dict:
     """
@@ -139,11 +155,20 @@ async def validate_report(target_text, context_msgs=None, chat_id=None):
     Верни THOUGHT PROCESS и FINAL JSON.
     """
     
-    try:
-        response = await model.generate_content_async(
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
+    async def _generate_with_retry():
+        return await model.generate_content_async(
             contents=[get_report_validation_prompt(), prompt],
-            generation_config={"response_mime_type": "text/plain"} # Using plain text to handle mixed output
+            generation_config={"response_mime_type": "text/plain"}
         )
+
+    try:
+        response = await _generate_with_retry()
         result = parse_ai_response(response.text)
         if result:
             return result
@@ -260,10 +285,19 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
         from src.services.learning import LearningService
         lessons = await LearningService.get_active_lessons(chat_id) if chat_id else []
         
-        response = await model.generate_content_async(
-            contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
-            generation_config={"response_mime_type": "text/plain"}
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception_type(Exception),
+            reraise=True
         )
+        async def _generate_with_retry():
+            return await model.generate_content_async(
+                contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
+                generation_config={"response_mime_type": "text/plain"}
+            )
+
+        response = await _generate_with_retry()
         
         logging.info(f"AI Response with thoughts: {response.text[:500]}...")
         result = parse_ai_response(response.text)
@@ -340,6 +374,11 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     """
     Generates a short, cynical comment based on context.
     """
+    cache_key = (chat_id, current_text)
+    if cache_key in comment_cache:
+        logging.info(f"Using cached cynical comment for chat {chat_id}")
+        return comment_cache[cache_key]
+
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
     context_str = ""
@@ -373,10 +412,21 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         facts_str = await FactService.get_facts_as_str(chat_id) if chat_id else ""
         context_str = lore_full.get('current_context', "")
         
-        response = await model.generate_content_async(
-            contents=[get_cynical_comment_prompt(lore_json, facts_str, context_str), prompt]
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=6),
+            retry=retry_if_exception_type(Exception),
+            reraise=True
         )
-        return response.text.strip()
+        async def _generate_with_retry():
+            return await model.generate_content_async(
+                contents=[get_cynical_comment_prompt(lore_json, facts_str, context_str), prompt]
+            )
+
+        response = await _generate_with_retry()
+        comment = response.text.strip()
+        comment_cache[cache_key] = comment
+        return comment
     except Exception as e:
         logging.error(f"Error generating comment: {e}")
         return None
