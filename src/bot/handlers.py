@@ -257,13 +257,15 @@ async def cmd_report(message: types.Message):
         category = escape(result.get("category", "Unspecified"))
         reason = escape(result.get("reason", "Violation detected"))
         points = result.get("points", 0)
+        ai_thoughts = result.get("ai_thought_process")
         
         await mark_message_reported(
             message.chat.id,
             reported_msg.message_id,
             message.from_user.id,
             f"{category}: {reason}",
-            points_awarded=points
+            points_awarded=points,
+            ai_thought_process=ai_thoughts
         )
         await add_points(message.chat.id, reported_msg.from_user.id, points)
         

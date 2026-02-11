@@ -99,6 +99,8 @@ async def perform_chat_analysis(chat_id: str):
         final_result["new_agreements"].extend(ai_result.get("new_agreements", []))
         final_result["resolved_agreements"].extend(ai_result.get("resolved_agreements", []))
         final_result["updated_agreements"].extend(ai_result.get("updated_agreements", []))
+        if "ai_thought_process" in ai_result:
+            final_result["ai_thought_process"] = ai_result["ai_thought_process"]
         
     final_result["offenders"].extend(afk_offenders)
     

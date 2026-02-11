@@ -23,21 +23,72 @@ def extract_json(text: str) -> dict:
     """
     Extracts JSON from text that might contain 'THOUGHT PROCESS' or other markers.
     Looks for the first '{' and the last '}'.
+    Also injects 'ai_thought_process' into the result.
     """
     try:
         # Try finding the last '{' to '}' block
         match = re.search(r'\{.*\}', text, re.DOTALL)
+        thought_process = ""
+        result = None
+
         if match:
             json_str = match.group(0)
-            return json.loads(json_str)
-        return json.loads(text)
+            # Everything before the match is thought process
+            thought_process = text[:match.start()].strip()
+            result = json.loads(json_str)
+        else:
+            result = json.loads(text)
+        
+        if isinstance(result, dict):
+            # Clean up headers like "THOUGHT PROCESS:"
+            thought_process = re.sub(r'^(THOUGHT PROCESS|THOUGHTS|REASONING)[:\-\s]*', '', thought_process, flags=re.IGNORECASE|re.MULTILINE).strip()
+            # Also remove "FINAL JSON:" if it ended up in thought process or at end
+            thought_process = re.sub(r'(FINAL JSON|JSON OUTPUT)[:\-\s]*$', '', thought_process, flags=re.IGNORECASE|re.MULTILINE).strip()
+            
+            result['ai_thought_process'] = thought_process
+
+        return result
     except Exception as e:
         logging.error(f"Failed to extract JSON from AI response: {e}. Text: {text[:200]}...")
+        return None
+
+def parse_ai_response(text: str) -> dict:
+    """
+    Parses AI response to separate JSON and thought process.
+    Returns the JSON dictionary with 'ai_thought_process' injected.
+    """
+    try:
+        json_data = extract_json(text)
+        if not json_data:
+            return None
+            
+        # If extraction worked, try to isolate thoughts
+        # We reconstruct what extract_json did to find the JSON string location
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        thoughts = ""
+        if match:
+            # Everything before the JSON is thoughts (roughly)
+            # or we just remove the JSON string from the original text
+            json_str = match.group(0)
+            thoughts = text.replace(json_str, "").strip()
+            
+            # Optional cleanup of markers
+            for marker in ["THOUGHT PROCESS", "FINAL JSON", "```json", "```"]:
+                thoughts = thoughts.replace(marker, "")
+            thoughts = thoughts.strip()
+            
+        if isinstance(json_data, dict):
+            json_data['ai_thought_process'] = thoughts
+            
+        return json_data
+    except Exception as e:
+        logging.error(f"Error parsing AI response with thoughts: {e}")
         return None
 
 async def validate_report(target_text, context_msgs=None):
     """
     Checks if a reported message is actually a violation, considering context.
+    Returns JSON dict with 'ai_thought_process' included.
     """
     if not target_text:
         return {"valid": False, "reason": "Empty message", "points": 0}
@@ -80,7 +131,7 @@ async def validate_report(target_text, context_msgs=None):
             contents=[REPORT_VALIDATION_PROMPT, prompt],
             generation_config={"response_mime_type": "text/plain"} # Using plain text to handle mixed output
         )
-        result = extract_json(response.text)
+        result = parse_ai_response(response.text)
         if result:
             return result
         return {"valid": False, "reason": "AI Error (JSON Extraction)"}
@@ -188,7 +239,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
         )
         
         logging.info(f"AI Response with thoughts: {response.text[:500]}...")
-        result = extract_json(response.text)
+        result = parse_ai_response(response.text)
         return result
     except Exception as e:
         logging.error(f"Error during AI analysis: {e}")

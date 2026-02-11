@@ -494,7 +494,7 @@ async def get_message(chat_id: int, message_id: int):
         return doc.to_dict()
     return None
 
-async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str, points_awarded: int = 0):
+async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str, points_awarded: int = 0, ai_thought_process: str = None):
     """
     Flags a message as reported by a user.
     """
@@ -502,13 +502,18 @@ async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, rea
     msg_id = str(msg_id)
     doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
     
-    await doc_ref.set({
+    data = {
         "is_reported": True,
         "reported_by": reporter_id,
         "report_reason": reason,
         "report_timestamp": firestore.SERVER_TIMESTAMP,
         "points_awarded": points_awarded
-    }, merge=True)
+    }
+    
+    if ai_thought_process:
+        data["ai_thought_process"] = ai_thought_process
+    
+    await doc_ref.set(data, merge=True)
 
 async def log_reaction(chat_id: int, user_id: int, username: str, message_id: int, emoji: str, timestamp: datetime):
     """
