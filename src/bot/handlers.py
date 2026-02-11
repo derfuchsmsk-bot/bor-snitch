@@ -336,27 +336,35 @@ async def handle_reactions(reaction: MessageReactionUpdated):
 async def handle_edited_messages(message: types.Message):
     await update_edited_message(message)
 
-def should_comment(message: types.Message, stats: dict) -> bool:
+def should_comment(text: str, stats: dict) -> bool:
     """
     Logic for 'Smart' Cynical Comments.
     """
-    if not message.text or message.text.startswith('/'):
+    if not text or text.startswith('/'):
         return False
         
     chance = config.CYNICAL_COMMENT_CHANCE
-    text_lower = message.text.lower()
+    text_lower = text.lower()
     
-    # Keyword triggers
+    # Keyword triggers (strongest trigger)
     if any(kw in text_lower for kw in ["бот", "bot", "снитч", "snitch", "ии", "ai"]):
-        chance += 0.10
+        chance += 0.15
     
-    # Rant trigger
-    if len(message.text) > 200:
+    # Question trigger (native dialogue integration)
+    if "?" in text:
+        chance += 0.05
+    
+    # Emotional trigger
+    if "!" in text:
         chance += 0.02
         
-    # High points target trigger
+    # Rant trigger
+    if len(text) > 150:
+        chance += 0.05
+        
+    # High points target trigger (roast the sinners)
     if stats and stats.get('total_points', 0) > 100:
-        chance += 0.01
+        chance += 0.02
         
     return random.random() < chance
 
@@ -387,24 +395,32 @@ async def handle_messages(message: types.Message):
         logging.error(f"Failed to log message: {e}")
 
     # Cynical Comment Logic
-    if message.text and not message.text.startswith('/'):
+    comment_text = message.text or override_text
+    if comment_text and not comment_text.startswith('/'):
         try:
             chat_id = message.chat.id
             now = datetime.now()
             last_time = last_comment_time.get(chat_id)
             
-            # Check for direct mention
-            is_mentioned = "@snitch_sayonara_bot" in message.text.lower()
+            # Robust Mention Detection: @bot or reply to bot
+            bot_user = await message.bot.get_me()
+            is_mentioned = False
+            
+            if message.text:
+                is_mentioned = f"@{bot_user.username}" in message.text
+            
+            if not is_mentioned and message.reply_to_message:
+                is_mentioned = message.reply_to_message.from_user.id == bot_user.id
             
             # If mentioned, ignore cooldown. Otherwise check cooldown.
             if is_mentioned or (not last_time or (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS):
                 user_stats = await get_user_stats(chat_id, message.from_user.id)
                 
                 # If mentioned, force reply. Otherwise roll dice.
-                if is_mentioned or should_comment(message, user_stats):
+                if is_mentioned or should_comment(comment_text, user_stats):
                     context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
                     username = message.from_user.username or message.from_user.first_name
-                    comment = await generate_cynical_comment(context_msgs, message.text, username, chat_id=chat_id)
+                    comment = await generate_cynical_comment(context_msgs, comment_text, username, chat_id=chat_id)
                     
                     if comment:
                         await message.reply(comment)
