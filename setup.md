@@ -52,6 +52,7 @@ cp .env.example .env
 *   `GCP_PROJECT_ID`: ID вашего проекта в Google Cloud.
 *   `GCP_LOCATION`: Регион (например, `us-central1`).
 *   `SECRET_TOKEN`: Придумайте любую секретную строку (для защиты эндпоинтов от посторонних).
+*   `LORE_BUCKET_NAME`: Имя бакета GCS для хранения файлов лора (опционально).
 
 ### 3. Авторизация в Google Cloud
 
@@ -124,7 +125,8 @@ gcloud run deploy bor-snitch \
     --set-env-vars TELEGRAM_TOKEN=your_token \
     --set-env-vars GCP_PROJECT_ID=your_project_id \
     --set-env-vars GCP_LOCATION=us-central1 \
-    --set-env-vars SECRET_TOKEN=your_secret
+    --set-env-vars SECRET_TOKEN=your_secret \
+    --set-env-vars LORE_BUCKET_NAME=your_bucket_name
 ```
 
 После успешного деплоя вы получите URL сервиса (например, `https://bor-snitch-xyz.run.app`).
@@ -139,9 +141,9 @@ curl -F "url=https://YOUR_SERVICE_URL/webhook" https://api.telegram.org/botYOUR_
 
 ### 4. Настройка Cloud Scheduler
 
-Бот использует **Cloud Scheduler** для запуска периодических задач, так как Cloud Run может "засыпать".
+Бот использует **Cloud Scheduler** для запуска периодических задач. Хотя в коде есть встроенный планировщик (APScheduler), он эффективен только при постоянной работе сервиса. В Google Cloud Run сервис "засыпает" при отсутствии запросов, поэтому внешние триггеры необходимы.
 
-> **Важно:** Поскольку бот не хранит список чатов в памяти для шедулера, вам нужно создать отдельные задачи (Jobs) для **каждого** активного чата.
+> **Важно:** Для `analyze_daily` и `weekly_decay` вам нужно создать отдельные задачи (Jobs) для **каждого** активного чата, так как Cloud Run не хранит состояние в памяти.
 
 #### А. Ежедневный анализ (Daily Analysis)
 Триггерит анализ за прошедший день.
@@ -168,3 +170,8 @@ curl -F "url=https://YOUR_SERVICE_URL/webhook" https://api.telegram.org/botYOUR_
     ```json
     {"chat_id": "123456789"}
     ```
+
+#### В. Эволюция Лора (Lore Evolution)
+Обновляет внутреннее описание персонажей и событий на основе воспоминаний.
+
+*   **Примечание:** Этот скрипт (`src/scripts/evolve_lore.py`) пока предназначен для ручного или периодического запуска через консоль/скрипт, так как он может занимать много времени. В будущем может быть добавлен как HTTP эндпоинт.
