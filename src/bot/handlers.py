@@ -251,7 +251,7 @@ async def cmd_report(message: types.Message):
     next_msgs = await get_subsequent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_NEXT_CONTEXT_LIMIT)
     
     context_msgs = prev_msgs + next_msgs
-    result = await validate_report(target_text, context_msgs)
+    result = await validate_report(target_text, context_msgs, chat_id=message.chat.id)
     
     if result and result.get("valid"):
         category = escape(result.get("category", "Unspecified"))
@@ -404,7 +404,7 @@ async def handle_messages(message: types.Message):
                 if is_mentioned or should_comment(message, user_stats):
                     context_msgs = await get_recent_messages(chat_id, message.date, limit=5)
                     username = message.from_user.username or message.from_user.first_name
-                    comment = await generate_cynical_comment(context_msgs, message.text, username)
+                    comment = await generate_cynical_comment(context_msgs, message.text, username, chat_id=chat_id)
                     
                     if comment:
                         await message.reply(comment)

@@ -2,7 +2,14 @@ import vertexai
 from vertexai.generative_models import GenerativeModel, SafetySetting, Part
 from src.utils.config import settings
 from src.utils.game_config import config
-from src.utils.prompts import SYSTEM_PROMPT, REPORT_VALIDATION_PROMPT, CYNICAL_COMMENT_PROMPT
+from src.utils.prompts import (
+    get_system_prompt,
+    get_report_validation_prompt,
+    get_cynical_comment_prompt,
+    MEMORY_SUMMARIZATION_PROMPT,
+    FEEDBACK_ANALYSIS_PROMPT
+)
+from src.services.lore_service import LoreService
 import json
 import logging
 import re
@@ -85,7 +92,7 @@ def parse_ai_response(text: str) -> dict:
         logging.error(f"Error parsing AI response with thoughts: {e}")
         return None
 
-async def validate_report(target_text, context_msgs=None):
+async def validate_report(target_text, context_msgs=None, chat_id=None):
     """
     Checks if a reported message is actually a violation, considering context.
     Returns JSON dict with 'ai_thought_process' included.
@@ -128,7 +135,7 @@ async def validate_report(target_text, context_msgs=None):
     
     try:
         response = await model.generate_content_async(
-            contents=[REPORT_VALIDATION_PROMPT, prompt],
+            contents=[get_report_validation_prompt(), prompt],
             generation_config={"response_mime_type": "text/plain"} # Using plain text to handle mixed output
         )
         result = parse_ai_response(response.text)
@@ -139,7 +146,7 @@ async def validate_report(target_text, context_msgs=None):
         logging.error(f"Error during report validation: {e}")
         return {"valid": False, "reason": f"AI Error: {str(e)}"}
 
-async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future_logs=None):
+async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future_logs=None, chat_id=None):
     """
     Sends chat logs to Gemini and returns the winner analysis.
     future_logs: Messages from the start of the NEXT day (for context only, to prevent false positives on ignores).
@@ -233,8 +240,11 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
     """
     
     try:
+        lore_json = await LoreService.get_lore_as_json(chat_id) if chat_id else "{}"
+        from src.services.learning import LearningService
+        lessons = await LearningService.get_active_lessons(chat_id) if chat_id else []
         response = await model.generate_content_async(
-            contents=[SYSTEM_PROMPT, prompt],
+            contents=[get_system_prompt(lore_json, lessons), prompt],
             generation_config={"response_mime_type": "text/plain"}
         )
         
@@ -265,7 +275,48 @@ async def transcribe_media(file_data: bytes, mime_type: str) -> str:
         logging.error(f"Transcription error: {e}")
         return f"[Transcription Failed: {e}]"
 
-async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown"):
+async def summarize_day(chat_id: int, date_key: str, logs: list):
+    """
+    Summarizes day's events and stores in memories collection.
+    """
+    if not logs:
+        return None
+
+    model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+    
+    # Format logs for summarization
+    formatted_logs = ""
+    for log in logs:
+        formatted_logs += f"- {log.get('username')}: {log.get('text')}\n"
+
+    prompt = f"""
+    ДАТА: {date_key}
+    ЛОГИ ЧАТА:
+    {formatted_logs}
+    """
+    
+    try:
+        response = await model.generate_content_async(
+            contents=[MEMORY_SUMMARIZATION_PROMPT, prompt],
+            generation_config={"response_mime_type": "text/plain"}
+        )
+        result = parse_ai_response(response.text)
+        if result:
+            from .db import db # Avoid circular import if needed
+            chat_id_str = str(chat_id)
+            doc_ref = db.collection("chats").document(chat_id_str).collection("memories").document(date_key)
+            
+            result['date'] = date_key
+            result['created_at'] = datetime.now(timezone.utc)
+            
+            await doc_ref.set(result)
+            logging.info(f"Memory saved for chat {chat_id} on {date_key}")
+            return result
+    except Exception as e:
+        logging.error(f"Error during summarization: {e}")
+    return None
+
+async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown", chat_id=None):
     """
     Generates a short, cynical comment based on context.
     """
@@ -288,8 +339,9 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     """
     
     try:
+        lore_json = await LoreService.get_lore_as_json(chat_id) if chat_id else "{}"
         response = await model.generate_content_async(
-            contents=[CYNICAL_COMMENT_PROMPT, prompt]
+            contents=[get_cynical_comment_prompt(lore_json), prompt]
         )
         return response.text.strip()
     except Exception as e:

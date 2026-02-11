@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.utils.config import settings
 from src.bot.handlers import router
 from src.services.db import get_logs_for_time_range, save_daily_results, apply_weekly_amnesty, db, get_active_agreements, save_agreement, check_afk_users, update_agreement_status, get_agreement_by_id, update_agreement_text, get_last_agreement_check, set_last_agreement_check
+from src.services.learning import LearningService
 from google.cloud import firestore
 from src.services.ai import analyze_daily_logs
 from src.utils.text import escape
@@ -78,7 +79,7 @@ async def perform_chat_analysis(chat_id: str):
     
     ai_result = None
     if logs:
-        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str, future_logs=future_logs)
+        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, date_str=today_str, future_logs=future_logs, chat_id=chat_id)
     
     afk_offenders = await check_afk_users(chat_id)
     
@@ -210,6 +211,21 @@ async def perform_chat_analysis(chat_id: str):
                  
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
 
+    # 8. Feedback Loop (Reflection)
+    try:
+        logging.info(f"Running reflection for chat {chat_id} on {today_str}")
+        await LearningService.analyze_feedback(chat_id, today_str)
+    except Exception as e:
+        logging.error(f"Failed to analyze feedback for chat {chat_id}: {e}")
+
+    # 9. Long-term Memory (Summarization)
+    try:
+        logging.info(f"Summarizing day for chat {chat_id} on {today_str}")
+        from src.services.ai import summarize_day
+        await summarize_day(chat_id, today_str, logs)
+    except Exception as e:
+        logging.error(f"Failed to summarize day for chat {chat_id}: {e}")
+
     # Release lock
     try:
         await lock_ref.delete()
@@ -242,7 +258,7 @@ async def perform_agreement_check(chat_id: str):
         return
     
     active_agreements = await get_active_agreements(chat_id)
-    ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements)
+    ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, chat_id=chat_id)
     
     if not ai_result:
         await set_last_agreement_check(chat_id, now_utc)
