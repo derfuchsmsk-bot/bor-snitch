@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users, dispute_agreement
-from ..services.ai import validate_report, transcribe_media, generate_cynical_comment
+from ..services.ai import validate_report, transcribe_media, generate_cynical_comment, validate_fact
 from ..services.fact_service import FactService
 from ..utils.text import escape
 from ..utils.game_config import config
@@ -331,11 +331,25 @@ async def cmd_remember(message: types.Message):
         await message.answer("❌ Что запомнить? Напиши после команды или ответь на сообщение.")
         return
 
-    success = await FactService.add_fact(message.chat.id, fact_text, source=f"user_{message.from_user.id}")
+    status_msg = await message.answer("🤔 Проверяю твой «факт» на вшивость...")
+    
+    validation = await validate_fact(fact_text)
+    
+    if not validation.get("is_fact"):
+        reason = validation.get("reason", "Это не похоже на полезный факт.")
+        await status_msg.edit_text(f"❌ <b>Отказ:</b> {escape(reason)}", parse_mode="HTML")
+        return
+
+    final_fact = validation.get("cleaned_fact") or fact_text
+    
+    success = await FactService.add_fact(message.chat.id, final_fact, source=f"user_{message.from_user.id}")
     if success:
-        await message.reply("✅ Запомнил. Теперь это истина.")
+        if final_fact.strip() != fact_text.strip():
+            await status_msg.edit_text(f"✅ <b>Запомнил в нормальном виде:</b>\n<i>{escape(final_fact)}</i>", parse_mode="HTML")
+        else:
+            await status_msg.edit_text("✅ <b>Запомнил.</b> Теперь это истина.", parse_mode="HTML")
     else:
-        await message.reply("❌ Не удалось запомнить. Видимо, я перегружен.")
+        await status_msg.edit_text("❌ Не удалось запомнить. Видимо, я перегружен.")
 
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):

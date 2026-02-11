@@ -7,7 +7,8 @@ from src.utils.prompts import (
     get_report_validation_prompt,
     get_cynical_comment_prompt,
     MEMORY_SUMMARIZATION_PROMPT,
-    FEEDBACK_ANALYSIS_PROMPT
+    FEEDBACK_ANALYSIS_PROMPT,
+    FACT_VALIDATION_PROMPT
 )
 from src.services.lore_service import LoreService
 from src.services.fact_service import FactService
@@ -365,3 +366,38 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     except Exception as e:
         logging.error(f"Error generating comment: {e}")
         return None
+
+async def validate_fact(text: str) -> dict:
+    """
+    Validates if the text is a fact and cleans it up using AI.
+    Returns: { "is_fact": bool, "cleaned_fact": str, "reason": str }
+    """
+    if not text or len(text.strip()) < 3:
+        return {
+            "is_fact": False,
+            "cleaned_fact": None,
+            "reason": "Слишком короткий текст."
+        }
+
+    model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+    
+    prompt = f"ТЕКСТ ДЛЯ ПРОВЕРКИ:\n\"{text}\"\n\nВерни ТОЛЬКО JSON."
+
+    try:
+        response = await model.generate_content_async(
+            contents=[FACT_VALIDATION_PROMPT, prompt],
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
+        # We expect strictly JSON since we specified the mime type
+        result = json.loads(response.text)
+        return result
+    except Exception as e:
+        logging.error(f"Error during fact validation: {e}")
+        # Fallback to accepting as is if AI fails, or we can be strict.
+        # Given the requirements, it's better to be strict if we want validation.
+        return {
+            "is_fact": False,
+            "cleaned_fact": None,
+            "reason": f"Ошибка AI при валидации: {str(e)}"
+        }
