@@ -331,12 +331,12 @@ async def cmd_remember(message: types.Message):
         await message.answer("❌ Что запомнить? Напиши после команды или ответь на сообщение.")
         return
 
-    status_msg = await message.answer("🤔 Проверяю твой «факт» на вшивость...")
+    status_msg = await message.answer("🤔 Проверяю твой «факт» на воздух...")
     
     validation = await validate_fact(fact_text)
     
     if not validation.get("is_fact"):
-        reason = validation.get("reason", "Это не похоже на полезный факт.")
+        reason = validation.get("reason", "Это очередной воздух.")
         await status_msg.edit_text(f"❌ <b>Отказ:</b> {escape(reason)}", parse_mode="HTML")
         return
 

@@ -378,6 +378,7 @@ async def on_startup():
         types.BotCommand(command="report", description="Донос (Reply)"),
         types.BotCommand(command="casino", description="Испытать удачу"),
         types.BotCommand(command="all", description="Позвать всех"),
+        types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
     ]
     if config.ENABLE_AGREEMENTS:
         commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
