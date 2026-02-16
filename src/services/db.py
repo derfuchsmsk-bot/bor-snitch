@@ -192,7 +192,9 @@ async def check_afk_users(chat_id: int):
     chat_id = str(chat_id)
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
-    now = datetime.now(timezone.utc)
+    # Use Moscow timezone for consistency with analysis logic
+    moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+    now_msk = datetime.now(moscow_tz)
     offenders = []
     
     current_season = get_current_season_id()
@@ -206,24 +208,25 @@ async def check_afk_users(chat_id: int):
             # We assume they are active to avoid false positives during migration
             continue
             
-        # Ensure last_active is datetime
+        # Ensure last_active is datetime and in Moscow timezone
         if not hasattr(last_active, 'timestamp'):
             continue
             
-        # Check difference
-        # Normalize to avoid TZ issues (comparing UTC to UTC)
+        # Convert to Moscow timezone for consistent comparison
         if last_active.tzinfo is None:
-             last_active = last_active.replace(tzinfo=timezone.utc)
-             
-        diff = now - last_active
+            last_active = last_active.replace(tzinfo=timezone.utc).astimezone(moscow_tz)
+        else:
+            last_active = last_active.astimezone(moscow_tz)
+            
+        # Calculate days inactive in Moscow timezone
+        diff = now_msk - last_active
         days_inactive = diff.days
         
         if days_inactive >= config.IGNORE_DAYS_BEFORE_PENALTY:
             # Penalty Logic
-            # Base: 50. Progressive: +50 for each extra day.
+            # Base: 50. Flat daily penalty (no progressive multiplier).
             
-            extra_days = days_inactive - config.IGNORE_DAYS_BEFORE_PENALTY
-            points = config.POINTS_AFK_BASE + (extra_days * config.POINTS_AFK_DAILY)
+            points = config.POINTS_AFK_BASE
             
             username = data.get('username', 'Ghost')
             
@@ -240,66 +243,27 @@ async def check_afk_users(chat_id: int):
 
 async def apply_weekly_amnesty(chat_id: int):
     """
-    Applies weekly amnesty: Points accumulated in the LAST 7 DAYS are halved.
-    Total points are reduced by (WeeklyPoints / 2).
+    Applies weekly amnesty: Halves the total points of every user in the chat.
     """
     chat_id = str(chat_id)
-    daily_ref = db.collection("chats").document(chat_id).collection("daily_results")
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     
-    # 1. Calculate the date range (Last 7 days excluding today? Or just last 7 entries?)
-    # Let's say last 7 days.
-    today = datetime.now()
-    dates_to_check = []
-    for i in range(7):
-        d = today - timedelta(days=i)
-        dates_to_check.append(d.strftime("%Y-%m-%d"))
-        
-    # 2. Aggregate weekly points per user
-    weekly_points = {} # user_id -> points
-    
-    for date_key in dates_to_check:
-        doc = await daily_ref.document(date_key).get()
-        if doc.exists:
-            data = doc.to_dict()
-            offenders = data.get('offenders', [])
-            for off in offenders:
-                uid = str(off.get('user_id'))
-                pts = off.get('points', 0)
-                weekly_points[uid] = weekly_points.get(uid, 0) + pts
-                
-    if not weekly_points:
-        logging.info(f"No points found for amnesty in last 7 days for chat {chat_id}.")
-        return False
-        
-    # 3. Apply reduction
     current_season = get_current_season_id()
     
-    for user_id, w_points in weekly_points.items():
-        if w_points <= 0:
-            continue
+    # 1. Fetch all user stats
+    async for doc in stats_ref.stream():
+        data = doc.to_dict()
+        if data.get('season_id') == current_season:
+            current_total = data.get('total_points', 0)
+            new_total = max(0, current_total // 2)
+            new_rank = calculate_rank(new_total)
             
-        reduction = w_points // 2
-        if reduction <= 0:
-            continue
-            
-        # Fetch user stats
-        user_doc_ref = stats_ref.document(user_id)
-        user_doc = await user_doc_ref.get()
-        
-        if user_doc.exists:
-            data = user_doc.to_dict()
-            if data.get('season_id') == current_season:
-                current_total = data.get('total_points', 0)
-                new_total = max(0, current_total - reduction)
-                new_rank = calculate_rank(new_total)
-                
-                await user_doc_ref.update({
-                    "total_points": new_total,
-                    "current_rank": new_rank
-                })
-                logging.info(f"Amnesty applied for user {user_id}: -{reduction} points (Weekly: {w_points}).")
-                
+            await doc.reference.update({
+                "total_points": new_total,
+                "current_rank": new_rank
+            })
+            logging.info(f"Amnesty applied for user {doc.id}: -{current_total - new_total} points (Total: {current_total}).")
+    
     return True
 
 async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: datetime):

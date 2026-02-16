@@ -22,6 +22,54 @@ async def cmd_start(message: types.Message):
     await message.answer("Я Снитч-бот. Я слежу за вами. 👁️")
     await db.collection("chats").document(str(message.chat.id)).set({"active": True}, merge=True)
 
+# Improved cynical comment caching with proper cleanup
+async def cleanup_old_cooldowns():
+    """Periodically clean up old cooldown entries to prevent memory leaks."""
+    now = datetime.now()
+    for chat_id, last_time in list(last_comment_time.items()):
+        if (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS * 2:
+            del last_comment_time[chat_id]
+
+async def get_comment_cooldown(chat_id: int) -> datetime:
+    """Get the last comment time for a chat with proper timezone handling."""
+    return last_comment_time.get(chat_id)
+
+async def set_comment_cooldown(chat_id: int):
+    """Set the last comment time for a chat."""
+    last_comment_time[chat_id] = datetime.now()
+
+async def should_comment(text: str, stats: dict) -> bool:
+    """
+    Logic for 'Smart' Cynical Comments.
+    """
+    if not text or text.startswith('/'):
+        return False
+        
+    chance = config.CYNICAL_COMMENT_CHANCE
+    text_lower = text.lower()
+    
+    # Keyword triggers (strongest trigger)
+    if any(kw in text_lower for kw in ["бот", "bot", "снитч", "snitch", "ии", "ai"]):
+        chance += 0.15
+    
+    # Question trigger (native dialogue integration)
+    if "?" in text:
+        chance += 0.05
+    
+    # Emotional trigger
+    if "!" in text:
+        chance += 0.02
+        
+    # Rant trigger
+    if len(text) > 150:
+        chance += 0.05
+        
+    # High points target trigger (roast the sinners)
+    if stats and stats.get('total_points', 0) > 100:
+        chance += 0.02
+        
+    return random.random() < chance
+
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     chat_id = str(message.chat.id)

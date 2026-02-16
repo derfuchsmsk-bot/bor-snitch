@@ -374,7 +374,10 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     """
     Generates a short, cynical comment based on context.
     """
-    cache_key = (chat_id, current_text)
+    # Improved cache key: include chat_id, current_text, and a hash of context_msgs
+    context_hash = hash(frozenset(msg.get('message_id', msg.get('text', '')) for msg in context_msgs))
+    cache_key = (chat_id, current_text, context_hash)
+    
     if cache_key in comment_cache:
         logging.info(f"Using cached cynical comment for chat {chat_id}")
         return comment_cache[cache_key]

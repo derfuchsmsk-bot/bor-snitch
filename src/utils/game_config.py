@@ -3,24 +3,24 @@ from dataclasses import dataclass
 @dataclass
 class GameConfig:
     # Points
-    POINTS_WHINING = 10
-    POINTS_STIFFNESS = 15
-    POINTS_TOXICITY = 25
-    POINTS_SNITCHING = 50
-    POINTS_AFK_BASE = 50
-    POINTS_AFK_DAILY = 50
+    POINTS_WHINING = 5
+    POINTS_STIFFNESS = 10
+    POINTS_TOXICITY = 20
+    POINTS_SNITCHING = 40
+    POINTS_AFK_BASE = 30
+    POINTS_AFK_DAILY = 30
 
     # Gambling
-    GAMBLE_WIN_CHANCE = 0.49
+    GAMBLE_WIN_CHANCE = 0.50
     GAMBLE_WIN_POINTS = 50
-    GAMBLE_LOSS_POINTS = 75
+    GAMBLE_LOSS_POINTS = 60
 
     # False Reports
     FALSE_REPORT_LIMIT = 3
-    FALSE_REPORT_PENALTY = 25
+    FALSE_REPORT_PENALTY = 15
 
     # Rules
-    IGNORE_DAYS_BEFORE_PENALTY = 2
+    IGNORE_DAYS_BEFORE_PENALTY = 3
     
     # Random Cynical Comments
     CYNICAL_COMMENT_CHANCE = 0.002 # 
