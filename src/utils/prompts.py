@@ -81,11 +81,9 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
 </instructions_for_lore>
 
 <categories>
-1. Whining (Нытье) — {config.POINTS_WHINING} очков. (Жалобы на жизнь, работу, погоду).
-2. Stiffness (Духота) — {config.POINTS_STIFFNESS} очков. (Занудство, придирки, пассивная агрессия, порча веселья).
-3. Toxicity (Токсичность) — {config.POINTS_TOXICITY} очков. (Оскорбления, грубость, агрессия).
-   - ВАЖНО: Оскорбление того, кто САМ нарушил правила (игнорщика, душнилу), — ЭТО НЕ ТОКСИЧНОСТЬ. Это праведный гнев.
-4. Snitching (Снитчевание/Предательство) — {config.POINTS_SNITCHING} очков.
+1. Toxicity (Токсичность) — {config.POINTS_TOXICITY} очков. (Оскорбления, грубость, агрессия).
+   - ВАЖНО: Оскорбление того, кто САМ нарушил правила (игнорщика), — ЭТО НЕ ТОКСИЧНОСТЬ. Это праведный гнев.
+2. Snitching (Снитчевание/Предательство) — {config.POINTS_SNITCHING} очков.
     - ИГНОР (Ignore): Активный игнор вопросов.{AGREEMENTS_CATEGORY_PROMPT}
     - Жесткие спойлеры и слив инфы.
 </categories>
@@ -113,10 +111,9 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
 5. УЧЕТ ДОНОСОВ (REPORTED MESSAGES):
    - Если сообщение помечено как [POINTS ALREADY AWARDED], ПРОПУСТИ ЕГО. Очки уже начислены. Не штрафуй второй раз.
    - Если жалоба обоснована — это гарантированное нарушение.
-   - Если жалоба — откровенная клевета — накажи самого доносчика за "Ложный донос" (Whining, {config.POINTS_WHINING} очков).
+   - Если жалоба — откровенная клевета — накажи самого доносчика за "Ложный донос" (Toxicity, {config.POINTS_TOXICITY} очков).
 
 6. ДЕДУПЛИКАЦИЯ:
-   - Серия сообщений одного типа (нытье) = 1 проступок.
    - Суммируй очки для одного юзера.
 </rules>
 
@@ -140,8 +137,8 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
     {{
       "user_id": 12345,
       "username": "nickname",
-      "category": "Whining",
-      "points": 10,
+      "category": "Toxicity",
+      "points": 20,
       "reason": "Обоснование на основе анализа.",
       "quote": "Цитата сообщения."
     }}
@@ -157,10 +154,8 @@ def get_report_validation_prompt():
 </role>
 
 <categories>
-1. Whining (Нытье) — {config.POINTS_WHINING} очков.
-2. Stiffness (Духота) — {config.POINTS_STIFFNESS} очков.
-3. Toxicity (Токсичность) — {config.POINTS_TOXICITY} очков.
-4. Snitching (Игнор/Предательство) — {config.POINTS_SNITCHING} очков.
+1. Toxicity (Токсичность) — {config.POINTS_TOXICITY} очков.
+2. Snitching (Игнор/Предательство) — {config.POINTS_SNITCHING} очков.
 </categories>
 
 <rules>
@@ -183,8 +178,8 @@ def get_report_validation_prompt():
 Формат JSON:
 {{
   "valid": true/false,
-  "category": "Whining" (или null),
-  "points": 10 (или 0),
+  "category": "Toxicity" (или null),
+  "points": 20 (или 0),
   "reason": "Короткий вердикт. Объясни, если это постирония."
 }}
 </output_format>

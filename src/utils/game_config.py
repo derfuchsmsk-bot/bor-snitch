@@ -3,8 +3,8 @@ from dataclasses import dataclass
 @dataclass
 class GameConfig:
     # Points
-    POINTS_WHINING = 5
-    POINTS_STIFFNESS = 10
+    POINTS_WHINING = 0
+    POINTS_STIFFNESS = 0
     POINTS_TOXICITY = 20
     POINTS_SNITCHING = 40
     POINTS_AFK_BASE = 30
