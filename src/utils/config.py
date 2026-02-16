@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     SECRET_TOKEN: str
     JWT_SECRET: str = "change-me-in-production"
     LORE_BUCKET_NAME: str | None = None
-    MAIN_CHAT_ID: int = -954103380
+    MAIN_CHAT_ID: int = -1003893798466
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
