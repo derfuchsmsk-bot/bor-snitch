@@ -2,9 +2,10 @@ import logging
 from datetime import datetime, timezone, timedelta
 from vertexai.generative_models import GenerativeModel
 from .db import db, get_logs_for_time_range
-from .ai import parse_ai_response
 from ..utils.game_config import config
 from ..utils.prompts import FEEDBACK_ANALYSIS_PROMPT
+from ..models.ai import FeedbackAnalysisResult
+import json
 
 class LearningService:
     @staticmethod
@@ -64,23 +65,28 @@ class LearningService:
         try:
             response = await model.generate_content_async(
                 contents=[FEEDBACK_ANALYSIS_PROMPT, prompt],
-                generation_config={"response_mime_type": "text/plain"}
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "response_schema": FeedbackAnalysisResult
+                }
             )
-            result = parse_ai_response(response.text)
             
-            if result and result.get("learned_rule"):
+            result_dict = json.loads(response.text)
+            result = FeedbackAnalysisResult(**result_dict)
+            
+            if result and result.learned_rule:
                 # 4. Save lesson to DB
                 lesson_coll = db.collection("chats").document(chat_id_str).collection("lessons")
                 await lesson_coll.add({
                     "created_at": datetime.now(timezone.utc),
                     "date_key": date_key,
                     "trigger_context": feedback_str[:1000], # Save a snippet
-                    "learned_rule": result["learned_rule"],
-                    "verdict": result.get("verdict"),
-                    "reasoning": result.get("reasoning"),
+                    "learned_rule": result.learned_rule,
+                    "verdict": result.verdict,
+                    "reasoning": result.reasoning,
                     "status": "active"
                 })
-                logging.info(f"New lesson learned for chat {chat_id}: {result['learned_rule']}")
+                logging.info(f"New lesson learned for chat {chat_id}: {result.learned_rule}")
                 return result
                 
         except Exception as e:

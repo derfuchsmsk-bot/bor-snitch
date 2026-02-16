@@ -14,11 +14,16 @@ from src.utils.prompts import (
     get_report_validation_prompt,
     get_cynical_comment_prompt,
     MEMORY_SUMMARIZATION_PROMPT,
-    FEEDBACK_ANALYSIS_PROMPT,
     FACT_VALIDATION_PROMPT
 )
 from src.services.lore_service import LoreService
 from src.services.fact_service import FactService
+from src.models.ai import (
+    DailyAnalysisResult,
+    ReportValidationResult,
+    FactValidationResult,
+    MemorySummaryResult
+)
 import json
 import logging
 import re
@@ -37,98 +42,34 @@ vertexai.init(**init_params)
 
 # Cache for cynical comments: (chat_id, current_text) -> comment
 # TTL: 1 hour, Max size: 1000 entries
-# We use a simple dict if cachetools is not installed, but roadmap says introduce it
 try:
     from cachetools import TTLCache
     comment_cache = TTLCache(maxsize=1000, ttl=3600)
 except ImportError:
     comment_cache = {}
 
-def extract_json(text: str) -> dict:
-    """
-    Extracts JSON from text that might contain 'THOUGHT PROCESS' or other markers.
-    Looks for the first '{' and the last '}'.
-    Also injects 'ai_thought_process' into the result.
-    """
-    try:
-        # Try finding the last '{' to '}' block
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        thought_process = ""
-        result = None
-
-        if match:
-            json_str = match.group(0)
-            # Everything before the match is thought process
-            thought_process = text[:match.start()].strip()
-            result = json.loads(json_str)
-        else:
-            result = json.loads(text)
-        
-        if isinstance(result, dict):
-            # Clean up headers like "THOUGHT PROCESS:"
-            thought_process = re.sub(r'^(THOUGHT PROCESS|THOUGHTS|REASONING)[:\-\s]*', '', thought_process, flags=re.IGNORECASE|re.MULTILINE).strip()
-            # Also remove "FINAL JSON:" if it ended up in thought process or at end
-            thought_process = re.sub(r'(FINAL JSON|JSON OUTPUT)[:\-\s]*$', '', thought_process, flags=re.IGNORECASE|re.MULTILINE).strip()
-            
-            result['ai_thought_process'] = thought_process
-
-        return result
-    except Exception as e:
-        logging.error(f"Failed to extract JSON from AI response: {e}. Text: {text[:200]}...")
-        return None
-
-def parse_ai_response(text: str) -> dict:
-    """
-    Parses AI response to separate JSON and thought process.
-    Returns the JSON dictionary with 'ai_thought_process' injected.
-    """
-    try:
-        json_data = extract_json(text)
-        if not json_data:
-            return None
-            
-        # If extraction worked, try to isolate thoughts
-        # We reconstruct what extract_json did to find the JSON string location
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        thoughts = ""
-        if match:
-            # Everything before the JSON is thoughts (roughly)
-            # or we just remove the JSON string from the original text
-            json_str = match.group(0)
-            thoughts = text.replace(json_str, "").strip()
-            
-            # Optional cleanup of markers
-            for marker in ["THOUGHT PROCESS", "FINAL JSON", "```json", "```"]:
-                thoughts = thoughts.replace(marker, "")
-            thoughts = thoughts.strip()
-            
-        if isinstance(json_data, dict):
-            json_data['ai_thought_process'] = thoughts
-            
-        return json_data
-    except Exception as e:
-        logging.error(f"Error parsing AI response with thoughts: {e}")
-        return None
-
-async def validate_report(target_text, context_msgs=None, chat_id=None):
+async def validate_report(target_text, context_msgs=None, chat_id=None) -> ReportValidationResult:
     """
     Checks if a reported message is actually a violation, considering context.
-    Returns JSON dict with 'ai_thought_process' included.
+    Returns ReportValidationResult object.
     """
     if not target_text:
-        return {"valid": False, "reason": "Empty message", "points": 0}
+        return ReportValidationResult(
+            valid=False, 
+            reason="Empty message", 
+            points=0,
+            thought_process="No text to analyze."
+        )
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
     context_str = ""
     if context_msgs:
         context_str = "КОНТЕКСТ (Предыдущие сообщения):\n"
-        # We use UTC for calculation but display is generic here
         now = datetime.now(timezone.utc)
         
         for msg in context_msgs:
             name = msg.get('username', 'Unknown')
-            # Check for bot marker
             if msg.get('is_bot') or name == "YOU (Snitch Bot)":
                  name = "YOU (Snitch Bot)"
 
@@ -151,8 +92,6 @@ async def validate_report(target_text, context_msgs=None, chat_id=None):
     {context_str}
     СООБЩЕНИЕ НА ПРОВЕРКУ (REPORTED MESSAGE):
     "{target_text}"
-    
-    Верни THOUGHT PROCESS и FINAL JSON.
     """
     
     @retry(
@@ -164,30 +103,37 @@ async def validate_report(target_text, context_msgs=None, chat_id=None):
     async def _generate_with_retry():
         return await model.generate_content_async(
             contents=[get_report_validation_prompt(), prompt],
-            generation_config={"response_mime_type": "text/plain"}
+            generation_config={
+                "response_mime_type": "application/json",
+                "response_schema": ReportValidationResult
+            }
         )
 
     try:
         response = await _generate_with_retry()
-        result = parse_ai_response(response.text)
-        if result:
-            return result
-        return {"valid": False, "reason": "AI Error (JSON Extraction)"}
+        # With response_schema, json.loads is usually sufficient if the SDK handles it, 
+        # but currently the Python SDK returns text that is JSON.
+        result_dict = json.loads(response.text)
+        return ReportValidationResult(**result_dict)
     except Exception as e:
         logging.error(f"Error during report validation: {e}")
-        return {"valid": False, "reason": f"AI Error: {str(e)}"}
+        return ReportValidationResult(
+            valid=False, 
+            reason=f"AI Error: {str(e)}", 
+            thought_process=f"Exception: {e}"
+        )
 
-async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future_logs=None, chat_id=None):
+async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future_logs=None, chat_id=None) -> DailyAnalysisResult:
     """
     Sends chat logs to Gemini and returns the winner analysis.
-    future_logs: Messages from the start of the NEXT day (for context only, to prevent false positives on ignores).
+    Returns DailyAnalysisResult.
     """
     if not logs:
         return None
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
-    # Map for reply resolution (includes future logs for context)
+    # Map for reply resolution
     all_logs = logs + (future_logs or [])
     id_map = {log.get('message_id'): log.get('username') for log in all_logs if log.get('message_id')}
 
@@ -270,7 +216,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
     {chat_history}
     {future_context_str}
     
-    Определи Снитча Дня согласно твоей системной инструкции. Верни THOUGHT PROCESS и FINAL JSON.
+    Определи Снитча Дня согласно твоей системной инструкции.
     {"ВАЖНО: Все описания договоренностей в поле 'text' должны быть на РУССКОМ ЯЗЫКЕ." if config.ENABLE_AGREEMENTS else ""}
     """
     
@@ -294,14 +240,17 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
         async def _generate_with_retry():
             return await model.generate_content_async(
                 contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
-                generation_config={"response_mime_type": "text/plain"}
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "response_schema": DailyAnalysisResult
+                }
             )
 
         response = await _generate_with_retry()
         
         logging.info(f"AI Response with thoughts: {response.text[:500]}...")
-        result = parse_ai_response(response.text)
-        return result
+        result_dict = json.loads(response.text)
+        return DailyAnalysisResult(**result_dict)
     except Exception as e:
         logging.error(f"Error during AI analysis: {e}")
         return None
@@ -326,9 +275,10 @@ async def transcribe_media(file_data: bytes, mime_type: str) -> str:
         logging.error(f"Transcription error: {e}")
         return f"[Transcription Failed: {e}]"
 
-async def summarize_day(chat_id: int, date_key: str, logs: list):
+async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummaryResult:
     """
     Summarizes day's events and stores in memories collection.
+    Returns MemorySummaryResult.
     """
     if not logs:
         return None
@@ -352,18 +302,25 @@ async def summarize_day(chat_id: int, date_key: str, logs: list):
     try:
         response = await model.generate_content_async(
             contents=[MEMORY_SUMMARIZATION_PROMPT, prompt],
-            generation_config={"response_mime_type": "text/plain"}
+            generation_config={
+                "response_mime_type": "application/json",
+                "response_schema": MemorySummaryResult
+            }
         )
-        result = parse_ai_response(response.text)
+        result_dict = json.loads(response.text)
+        result = MemorySummaryResult(**result_dict)
+
         if result:
             from .db import db # Avoid circular import if needed
             chat_id_str = str(chat_id)
             doc_ref = db.collection("chats").document(chat_id_str).collection("memories").document(date_key)
             
-            result['date'] = date_key
-            result['created_at'] = datetime.now(timezone.utc)
+            # Convert to dict for Firestore
+            data = result.model_dump()
+            data['date'] = date_key
+            data['created_at'] = datetime.now(timezone.utc)
             
-            await doc_ref.set(result)
+            await doc_ref.set(data)
             logging.info(f"Memory saved for chat {chat_id} on {date_key}")
             return result
     except Exception as e:
@@ -434,37 +391,37 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         logging.error(f"Error generating comment: {e}")
         return None
 
-async def validate_fact(text: str) -> dict:
+async def validate_fact(text: str) -> FactValidationResult:
     """
     Validates if the text is a fact and cleans it up using AI.
-    Returns: { "is_fact": bool, "cleaned_fact": str, "reason": str }
+    Returns FactValidationResult object.
     """
     if not text or len(text.strip()) < 3:
-        return {
-            "is_fact": False,
-            "cleaned_fact": None,
-            "reason": "Слишком короткий текст."
-        }
+        return FactValidationResult(
+            is_fact=False,
+            cleaned_fact=None,
+            reason="Слишком короткий текст."
+        )
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
-    prompt = f"ТЕКСТ ДЛЯ ПРОВЕРКИ:\n\"{text}\"\n\nВерни ТОЛЬКО JSON."
+    prompt = f"ТЕКСТ ДЛЯ ПРОВЕРКИ:\n\"{text}\""
 
     try:
         response = await model.generate_content_async(
             contents=[FACT_VALIDATION_PROMPT, prompt],
-            generation_config={"response_mime_type": "application/json"}
+            generation_config={
+                "response_mime_type": "application/json",
+                "response_schema": FactValidationResult
+            }
         )
         
-        # We expect strictly JSON since we specified the mime type
-        result = json.loads(response.text)
-        return result
+        result_dict = json.loads(response.text)
+        return FactValidationResult(**result_dict)
     except Exception as e:
         logging.error(f"Error during fact validation: {e}")
-        # Fallback to accepting as is if AI fails, or we can be strict.
-        # Given the requirements, it's better to be strict if we want validation.
-        return {
-            "is_fact": False,
-            "cleaned_fact": None,
-            "reason": f"Ошибка AI при валидации: {str(e)}"
-        }
+        return FactValidationResult(
+            is_fact=False,
+            cleaned_fact=None,
+            reason=f"Ошибка AI при валидации: {str(e)}"
+        )

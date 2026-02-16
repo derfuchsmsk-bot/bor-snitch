@@ -1,17 +1,18 @@
 import asyncio
+import warnings
 from google.cloud import firestore
 from ..utils.config import settings
 from datetime import datetime, timezone, timedelta
 import logging
 from ..utils.game_config import config
+from ..database import db
+from ..repositories.user_repository import user_repository
+from ..repositories.message_repository import message_repository
+from ..repositories.agreement_repository import agreement_repository
 
 def get_current_season_id():
     """Returns the current season ID (Global)."""
     return "global" # Single season forever, only weekly decay
-
-# Initialize Firestore Async Client
-# Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var or running in GCP
-db = firestore.AsyncClient(project=settings.GCP_PROJECT_ID)
 
 async def log_message(message, override_text=None):
     """
@@ -63,23 +64,23 @@ async def log_message(message, override_text=None):
 
     # Update user's last active date
     try:
-        user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
-        await user_stats_ref.set({
-            "username": message.from_user.username or message.from_user.first_name,
-            "last_active_date": message.date,
-            "full_name": message.from_user.full_name # Ensure name is up to date
-        }, merge=True)
+        await user_repository.update_user_last_active(
+            chat_id,
+            user_id,
+            message.date,
+            message.from_user.username or message.from_user.first_name,
+            message.from_user.full_name
+        )
     except Exception as e:
         logging.error(f"Failed to update last_active_date for user {user_id}: {e}")
 
 async def save_agreement(chat_id: int, agreement: dict):
     """
+    [DEPRECATED] Use agreement_repository.save_agreement directly.
     Saves a new agreement found by AI.
     agreement: { "text": "...", "users": [...], "type": "...", "expires_at": "..." }
     """
-    chat_id = str(chat_id)
-    coll_ref = db.collection("chats").document(chat_id).collection("agreements")
-    
+    warnings.warn("save_agreement is deprecated, use agreement_repository.save_agreement instead", DeprecationWarning, stacklevel=2)
     data = agreement.copy()
     data['status'] = 'active'
     # Ensure timestamp is set to SERVER_TIMESTAMP to avoid AI hallucinated dates
@@ -98,91 +99,56 @@ async def save_agreement(chat_id: int, agreement: dict):
         except Exception:
             data['expires_at'] = datetime.now(timezone.utc) + timedelta(hours=config.AGREEMENT_DEFAULT_LIFESPAN_HOURS)
         
-    await coll_ref.add(data)
+    await agreement_repository.save_agreement(chat_id, data)
 
 async def get_agreement_by_id(chat_id: int, agreement_id: str):
-    """Fetches a specific agreement."""
-    doc = await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).get()
-    if doc.exists:
-        data = doc.to_dict()
-        data['id'] = doc.id
-        return data
-    return None
+    """[DEPRECATED] Fetches a specific agreement."""
+    warnings.warn("get_agreement_by_id is deprecated, use agreement_repository.get_agreement instead", DeprecationWarning, stacklevel=2)
+    return await agreement_repository.get_agreement(chat_id, agreement_id)
 
 async def dispute_agreement(chat_id: int, agreement_id: str):
     """
-    Marks an agreement as disputed if within the time window.
+    [DEPRECATED] Marks an agreement as disputed if within the time window.
     Returns (success, message).
     """
-    ag = await get_agreement_by_id(chat_id, agreement_id)
-    if not ag or ag.get('status') != 'active':
-        return False, "not_found"
-    
-    can_dispute_until = ag.get('can_be_disputed_until')
-    if not can_dispute_until:
-        return False, "too_late"
-        
-    # Ensure TZ awareness
-    if can_dispute_until.tzinfo is None:
-        can_dispute_until = can_dispute_until.replace(tzinfo=timezone.utc)
-        
-    if datetime.now(timezone.utc) > can_dispute_until:
-        return False, "too_late"
-        
-    # Success: mark as disputed
-    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update({
-        "status": "disputed"
-    })
-    return True, "ok"
+    warnings.warn("dispute_agreement is deprecated, use agreement_repository.dispute_agreement instead", DeprecationWarning, stacklevel=2)
+    return await agreement_repository.dispute_agreement(chat_id, agreement_id)
 
 async def update_agreement_status(chat_id: int, agreement_id: str, status: str, reason: str = None):
-    """Updates agreement status (fulfilled/broken)."""
+    """[DEPRECATED] Updates agreement status (fulfilled/broken)."""
+    warnings.warn("update_agreement_status is deprecated, use agreement_repository.update_agreement instead", DeprecationWarning, stacklevel=2)
     update_data = {"status": status}
     if reason:
         update_data["resolution_reason"] = reason
     
-    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update(update_data)
+    await agreement_repository.update_agreement(chat_id, agreement_id, update_data)
 
 async def update_agreement_text(chat_id: int, agreement_id: str, new_text: str, reason: str = None):
-    """Updates agreement text and optionally adds an update reason."""
+    """[DEPRECATED] Updates agreement text and optionally adds an update reason."""
+    warnings.warn("update_agreement_text is deprecated, use agreement_repository.update_agreement instead", DeprecationWarning, stacklevel=2)
     update_data = {"text": new_text}
     if reason:
         update_data["update_reason"] = reason
     update_data["updated_at"] = firestore.SERVER_TIMESTAMP
     
-    await db.collection("chats").document(str(chat_id)).collection("agreements").document(agreement_id).update(update_data)
+    await agreement_repository.update_agreement(chat_id, agreement_id, update_data)
 
 async def get_last_agreement_check(chat_id: str) -> datetime:
-    """Gets the timestamp of the last agreement check."""
-    doc = await db.collection("chats").document(chat_id).get()
-    if doc.exists:
-        data = doc.to_dict()
-        return data.get('last_agreement_check')
-    return None
+    """[DEPRECATED] Gets the timestamp of the last agreement check."""
+    warnings.warn("get_last_agreement_check is deprecated, use agreement_repository.get_last_agreement_check instead", DeprecationWarning, stacklevel=2)
+    return await agreement_repository.get_last_agreement_check(chat_id)
 
 async def set_last_agreement_check(chat_id: str, ts: datetime):
-    """Sets the timestamp of the last agreement check."""
-    await db.collection("chats").document(chat_id).set({
-        'last_agreement_check': ts
-    }, merge=True)
+    """[DEPRECATED] Sets the timestamp of the last agreement check."""
+    warnings.warn("set_last_agreement_check is deprecated, use agreement_repository.set_last_agreement_check instead", DeprecationWarning, stacklevel=2)
+    await agreement_repository.set_last_agreement_check(chat_id, ts)
 
 async def get_active_agreements(chat_id: int):
     """
-    Fetches active agreements for the chat.
+    [DEPRECATED] Fetches active agreements for the chat.
     """
-    chat_id = str(chat_id)
-    coll_ref = db.collection("chats").document(chat_id).collection("agreements")
-    query = coll_ref.where(
-        filter=firestore.FieldFilter("status", "==", "active")
-    ).order_by("created_at", direction=firestore.Query.ASCENDING)
-    
-    agreements = []
-    async for doc in query.stream():
-        data = doc.to_dict()
-        data['id'] = doc.id
-        agreements.append(data)
-    
-    return agreements
+    warnings.warn("get_active_agreements is deprecated, use agreement_repository.get_active_agreements instead", DeprecationWarning, stacklevel=2)
+    return await agreement_repository.get_active_agreements(chat_id)
 
 async def check_afk_users(chat_id: int):
     """
@@ -268,65 +234,24 @@ async def apply_weekly_amnesty(chat_id: int):
 
 async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: datetime):
     """
-    Fetches messages within a specific time range [start_dt, end_dt).
+    [DEPRECATED] Fetches messages within a specific time range [start_dt, end_dt).
     """
-    chat_ref = db.collection("chats").document(str(chat_id))
-    messages_ref = chat_ref.collection("messages")
-    
-    # Query: timestamp >= start_dt AND timestamp < end_dt
-    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", ">=", start_dt))\
-                        .where(filter=firestore.FieldFilter("timestamp", "<", end_dt))\
-                        .order_by("timestamp", direction=firestore.Query.ASCENDING)
-    
-    logs = []
-    async for doc in query.stream():
-        data = doc.to_dict()
-        data['message_id'] = doc.id
-        logs.append(data)
-        
-    return logs
+    warnings.warn("get_logs_for_time_range is deprecated, use message_repository.get_logs_for_time_range instead", DeprecationWarning, stacklevel=2)
+    return await message_repository.get_logs_for_time_range(chat_id, start_dt, end_dt)
 
 async def get_recent_messages(chat_id: int, before_timestamp: datetime, limit: int = 5):
     """
-    Fetches the last N messages before a specific timestamp for context.
+    [DEPRECATED] Fetches the last N messages before a specific timestamp for context.
     """
-    chat_ref = db.collection("chats").document(str(chat_id))
-    messages_ref = chat_ref.collection("messages")
-    
-    # Query: timestamp < before_timestamp, ORDER BY timestamp DESC, LIMIT limit
-    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", "<", before_timestamp))\
-                        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-                        .limit(limit)
-    
-    logs = []
-    async for doc in query.stream():
-        data = doc.to_dict()
-        data['message_id'] = doc.id
-        logs.append(data)
-        
-    # Reverse to return in chronological order
-    logs.reverse()
-    return logs
+    warnings.warn("get_recent_messages is deprecated, use message_repository.get_recent_messages instead", DeprecationWarning, stacklevel=2)
+    return await message_repository.get_recent_messages(chat_id, before_timestamp, limit)
 
 async def get_subsequent_messages(chat_id: int, after_timestamp: datetime, limit: int = 5):
     """
-    Fetches the next N messages after a specific timestamp.
+    [DEPRECATED] Fetches the next N messages after a specific timestamp.
     """
-    chat_ref = db.collection("chats").document(str(chat_id))
-    messages_ref = chat_ref.collection("messages")
-    
-    # Query: timestamp > after_timestamp, ORDER BY timestamp ASC, LIMIT limit
-    query = messages_ref.where(filter=firestore.FieldFilter("timestamp", ">", after_timestamp))\
-                        .order_by("timestamp", direction=firestore.Query.ASCENDING)\
-                        .limit(limit)
-    
-    logs = []
-    async for doc in query.stream():
-        data = doc.to_dict()
-        data['message_id'] = doc.id
-        logs.append(data)
-        
-    return logs
+    warnings.warn("get_subsequent_messages is deprecated, use message_repository.get_subsequent_messages instead", DeprecationWarning, stacklevel=2)
+    return await message_repository.get_subsequent_messages(chat_id, after_timestamp, limit)
 
 async def save_daily_results(chat_id: int, analysis_result: dict):
     """
@@ -417,64 +342,32 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
 
 def calculate_rank(points):
     """
-    Calculates the Snitch Rank based on total points.
+    [DEPRECATED] Calculates the Snitch Rank based on total points.
     Theme: Prison Caste (Reverse/Ironic)
     """
-    if points >= config.RANK_PIERCED[0]:
-        return "Масть Проткнутая 👑"
-    elif points >= config.RANK_OFFENDED[0]:
-        return "Обиженный 🚽"
-    elif points >= config.RANK_GOAT[0]:
-        return "Козёл 🐐"
-    elif points >= config.RANK_SHNYR[0]:
-        return "Шнырь 🧹"
-    else:
-        return "Порядочный 😐"
+    warnings.warn("calculate_rank is deprecated, use user_repository.calculate_rank instead", DeprecationWarning, stacklevel=2)
+    return user_repository.calculate_rank(points)
 
 async def get_user_stats(chat_id: int, user_id: int):
     """
-    Fetches stats for a specific user.
+    [DEPRECATED] Fetches stats for a specific user.
     """
-    chat_id = str(chat_id)
-    user_id = str(user_id)
-    doc_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
-    doc = await doc_ref.get()
-    if doc.exists:
-        return doc.to_dict()
-    return None
+    warnings.warn("get_user_stats is deprecated, use user_repository.get_user_stats instead", DeprecationWarning, stacklevel=2)
+    return await user_repository.get_user_stats(chat_id, user_id)
 
 async def get_message(chat_id: int, message_id: int):
     """
-    Fetches a specific message by ID.
+    [DEPRECATED] Fetches a specific message by ID.
     """
-    chat_id = str(chat_id)
-    message_id = str(message_id)
-    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(message_id)
-    doc = await doc_ref.get()
-    if doc.exists:
-        return doc.to_dict()
-    return None
+    warnings.warn("get_message is deprecated, use message_repository.get_message instead", DeprecationWarning, stacklevel=2)
+    return await message_repository.get_message(chat_id, message_id)
 
 async def mark_message_reported(chat_id: int, msg_id: int, reporter_id: int, reason: str, points_awarded: int = 0, ai_thought_process: str = None):
     """
-    Flags a message as reported by a user.
+    [DEPRECATED] Flags a message as reported by a user.
     """
-    chat_id = str(chat_id)
-    msg_id = str(msg_id)
-    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
-    
-    data = {
-        "is_reported": True,
-        "reported_by": reporter_id,
-        "report_reason": reason,
-        "report_timestamp": firestore.SERVER_TIMESTAMP,
-        "points_awarded": points_awarded
-    }
-    
-    if ai_thought_process:
-        data["ai_thought_process"] = ai_thought_process
-    
-    await doc_ref.set(data, merge=True)
+    warnings.warn("mark_message_reported is deprecated, use message_repository.mark_message_reported instead", DeprecationWarning, stacklevel=2)
+    await message_repository.mark_message_reported(chat_id, msg_id, reporter_id, reason, points_awarded, ai_thought_process)
 
 async def log_reaction(chat_id: int, user_id: int, username: str, message_id: int, emoji: str, timestamp: datetime):
     """
@@ -484,16 +377,14 @@ async def log_reaction(chat_id: int, user_id: int, username: str, message_id: in
     message_id = str(message_id)
     
     # Fetch original message
-    msg_ref = db.collection("chats").document(chat_id).collection("messages").document(message_id)
-    msg_doc = await msg_ref.get()
+    msg_data = await message_repository.get_message(chat_id, message_id)
     
     original_text = "Unknown Message"
     target_user = "Unknown"
     
-    if msg_doc.exists:
-        data = msg_doc.to_dict()
-        original_text = data.get("text", "")
-        target_user = data.get("username", "Unknown")
+    if msg_data:
+        original_text = msg_data.get("text", "")
+        target_user = msg_data.get("username", "Unknown")
         
     # Create log entry
     # We use a composite key to avoid duplicates if needed, but timestamp is good enough
@@ -503,9 +394,8 @@ async def log_reaction(chat_id: int, user_id: int, username: str, message_id: in
     
     log_text = f"[REACTION] {username} reacted {emoji} to {target_user}'s message: \"{original_text}\""
     
-    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(reaction_id)
-    
     data = {
+        "message_id": reaction_id,
         "user_id": int(user_id),
         "username": username,
         "full_name": username, # Fallback
@@ -516,71 +406,28 @@ async def log_reaction(chat_id: int, user_id: int, username: str, message_id: in
         "target_msg_id": message_id
     }
     
-    logging.debug(f"Writing reaction {reaction_id} to Firestore...")
-    await doc_ref.set(data)
-    logging.debug(f"Reaction {reaction_id} written successfully.")
+    await message_repository.log_message(chat_id, data)
 
 async def record_gamble_result(chat_id: int, user_id: int, new_points: int, date_key: str):
     """
-    Updates user stats after a gamble.
+    [DEPRECATED] Updates user stats after a gamble.
     """
-    chat_id = str(chat_id)
-    user_id = str(user_id)
-    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
-    
-    new_rank = calculate_rank(new_points)
-    
-    await user_stats_ref.set({
-        "total_points": new_points,
-        "current_rank": new_rank,
-        "last_gamble_date": date_key
-    }, merge=True)
+    warnings.warn("record_gamble_result is deprecated, use user_repository.record_gamble_result instead", DeprecationWarning, stacklevel=2)
+    await user_repository.record_gamble_result(chat_id, user_id, new_points, date_key)
 
 async def increment_false_report_count(chat_id: int, user_id: int):
     """
-    Increments the false report counter and returns the new value.
+    [DEPRECATED] Increments the false report counter and returns the new value.
     """
-    chat_id = str(chat_id)
-    user_id = str(user_id)
-    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
-    
-    doc = await user_stats_ref.get()
-    
-    current_count = 0
-    if doc.exists:
-        data = doc.to_dict()
-        current_count = data.get("false_report_count", 0)
-        
-    new_count = current_count + 1
-    
-    await user_stats_ref.set({
-        "false_report_count": new_count
-    }, merge=True)
-    
-    return new_count
+    warnings.warn("increment_false_report_count is deprecated, use user_repository.increment_false_report_count instead", DeprecationWarning, stacklevel=2)
+    return await user_repository.increment_false_report_count(chat_id, user_id)
 
 async def add_points(chat_id: int, user_id: int, points: int):
     """
-    Applies immediate points (penalty or reward).
+    [DEPRECATED] Applies immediate points (penalty or reward).
     """
-    chat_id = str(chat_id)
-    user_id = str(user_id)
-    user_stats_ref = db.collection("chats").document(chat_id).collection("user_stats").document(user_id)
-    
-    doc = await user_stats_ref.get()
-    current_points = 0
-    
-    if doc.exists:
-        data = doc.to_dict()
-        current_points = data.get("total_points", 0)
-        
-    new_points = current_points + points
-    new_rank = calculate_rank(new_points)
-    
-    await user_stats_ref.set({
-        "total_points": new_points,
-        "current_rank": new_rank
-    }, merge=True)
+    warnings.warn("add_points is deprecated, use user_repository.add_points instead", DeprecationWarning, stacklevel=2)
+    await user_repository.add_points(chat_id, user_id, points)
 
 async def update_edited_message(message):
     """
@@ -588,8 +435,6 @@ async def update_edited_message(message):
     """
     chat_id = str(message.chat.id)
     msg_id = str(message.message_id)
-    
-    doc_ref = db.collection("chats").document(chat_id).collection("messages").document(msg_id)
     
     text_content = message.text or message.caption
     if not text_content and message.sticker:
@@ -604,37 +449,15 @@ async def update_edited_message(message):
         "last_edit_date": message.edit_date
     }
     
-    logging.debug(f"Updating edited message {msg_id} in Firestore (Chat: {chat_id})...")
-    await doc_ref.set(update_data, merge=True)
-    logging.debug(f"Message {msg_id} updated successfully.")
+    await message_repository.update_message(chat_id, msg_id, update_data)
 
 async def get_chat_users(chat_id: int, limit: int = 100, cursor=None):
     """
-    Fetches users who have stats in the chat with pagination.
+    [DEPRECATED] Fetches users who have stats in the chat with pagination.
     Used for the /all command and management.
     """
-    chat_id = str(chat_id)
-    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
-    
-    query = stats_ref.order_by("__name__").limit(limit)
-    if cursor:
-        query = query.start_after(cursor)
-    
-    users = []
-    last_doc = None
-    async for doc in query.stream():
-        data = doc.to_dict()
-        user_id = doc.id
-        username = data.get('username')
-        full_name = data.get('full_name', username)
-        
-        users.append({
-            "user_id": user_id,
-            "username": username,
-            "full_name": full_name
-        })
-        last_doc = doc
-    return users, last_doc
+    warnings.warn("get_chat_users is deprecated, use user_repository.get_chat_users instead", DeprecationWarning, stacklevel=2)
+    return await user_repository.get_chat_users(chat_id, limit, cursor)
 
 async def get_all_chats(limit: int = 20, cursor=None):
     """

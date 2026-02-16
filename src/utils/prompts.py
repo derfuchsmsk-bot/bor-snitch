@@ -14,31 +14,6 @@ AGREEMENTS_THOUGHT_PROMPT = f"""
    - Если это просто "наверное сделаю" или "я собираюсь", это не считается.
    - ЯЗЫК: Сами договоренности (поле "text") записывай СТРОГО на русском языке, даже если в чате говорили на другом. Переводи на русский, если нужно.""" if config.ENABLE_AGREEMENTS else ""
 
-AGREEMENTS_JSON_PROMPT = f"""
-  "new_agreements": [
-     {{
-       "text": "Описание договоренности СТРОГО НА РУССКОМ",
-       "users": ["nickname1", "nickname2"],
-       "type": "vow" | "pact" | "public",
-       "expires_at": "YYYY-MM-DDTHH:MM:SS",
-       "reasoning": "Почему ты решил, что это договоренность? (на русском)"
-     }}
-  ],
-  "resolved_agreements": [
-     {{
-       "id": "agreement_doc_id",
-       "status": "fulfilled" | "broken",
-       "reason": "Почему решено (например, цитата нарушения)"
-     }}
-  ],
-  "updated_agreements": [
-     {{
-       "id": "agreement_doc_id",
-       "text": "Обновленный текст договоренности СТРОГО НА РУССКОМ",
-       "reason": "Почему потребовалось обновление? (на русском)"
-     }}
-  ],""" if config.ENABLE_AGREEMENTS else ""
-
 def get_system_prompt(lore_json: str, verified_facts: str = "", current_context: str = "", lessons: list = None):
     lessons_str = ""
     if lessons:
@@ -118,33 +93,12 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
 </rules>
 
 <thought_process_instructions>
-Перед выводом итогового JSON, ты ОБЯЗАН провести анализ (THOUGHT PROCESS).
+В поле `thought_process` ответа, ты ОБЯЗАН провести анализ (THOUGHT PROCESS).
 1. Для каждого потенциального нарушителя:
    - Проверь контекст: была ли это шутка? Был ли это ответ на провокацию?
    - Оцени тяжесть: реально ли это портит атмосферу?
    - Проверь исключения (Mercy Mode, Праведный гнев).{AGREEMENTS_THOUGHT_PROMPT}
 </thought_process_instructions>
-
-<output_format>
-Твой ответ должен состоять из двух частей:
-1. Блок THOUGHT PROCESS: Подробный разбор полетов свободным текстом.
-2. Блок FINAL JSON: Строгий JSON.
-
-Формат JSON:
-{{
-{AGREEMENTS_JSON_PROMPT}
-  "offenders": [
-    {{
-      "user_id": 12345,
-      "username": "nickname",
-      "category": "Toxicity",
-      "points": 20,
-      "reason": "Обоснование на основе анализа.",
-      "quote": "Цитата сообщения."
-    }}
-  ]
-}}
-</output_format>
 """
 
 def get_report_validation_prompt():
@@ -167,22 +121,11 @@ def get_report_validation_prompt():
 </rules>
 
 <thought_process_instructions>
-Перед выводом JSON проанализируй:
+В поле `thought_process` проанализируй:
 1. Контекст переписки.
 2. Вероятность иронии/саркастичности.
 3. Не является ли это "праведным гневом" за игнор.
 </thought_process_instructions>
-
-<output_format>
-Выведи THOUGHT PROCESS, затем FINAL JSON.
-Формат JSON:
-{{
-  "valid": true/false,
-  "category": "Toxicity" (или null),
-  "points": 20 (или 0),
-  "reason": "Короткий вердикт. Объясни, если это постирония."
-}}
-</output_format>
 """
 
 def get_cynical_comment_prompt(lore_json: str, verified_facts: str = "", current_context: str = ""):
@@ -225,20 +168,6 @@ MEMORY_SUMMARIZATION_PROMPT = """
 
 Выдели ключевые события, новые факты об участниках и общую атмосферу чата.
 Будь краток, циничен и точен.
-
-Выдай JSON в формате:
-{
-  "summary": "Общий итог дня одной-двумя фразами.",
-  "key_facts": ["Факт 1", "Факт 2"],
-  "emotional_vibe": "Описание настроения",
-  "major_events": [
-    {
-      "title": "Название события",
-      "participants": ["@user1", "@user2"],
-      "outcome": "Чем закончилось"
-    }
-  ]
-}
 """
 
 FACT_VALIDATION_PROMPT = """
@@ -259,15 +188,6 @@ FACT_VALIDATION_PROMPT = """
 4. ЛЕГЕНДАРНЫЕ ФЕЙЛЫ: Если событие постыдное, но это СОБЫТИЕ (например, "напился и упал"), записывай его нейтрально, фиксируя действие, а не оценку личности.
 5. РЕДАКТИРОВАНИЕ: Переводи из первого лица в третье. "Я купил" -> "@username купил". Убирай мат и мусорные слова.
 </rules>
-
-<output_format>
-Выдай ТОЛЬКО JSON:
-{
-  "is_fact": true/false,
-  "cleaned_fact": "Отредактированный текст факта на русском или null",
-  "reason": "Краткая причина (почему это мусор, мнение или как отредактировано)"
-}
-</output_format>
 """
 
 FEEDBACK_ANALYSIS_PROMPT = """
@@ -275,11 +195,4 @@ FEEDBACK_ANALYSIS_PROMPT = """
 Посмотри на сообщения, которые были ответами на твои действия.
 
 Твоя задача — понять, был ли ты справедлив и смешон, или ты "передушил" и нужно скорректировать поведение.
-
-Выдай JSON:
-{
-  "verdict": "справедливо" | "ошибка" | "непонятно",
-  "reasoning": "Почему ты так решил?",
-  "learned_rule": "Если нужно что-то изменить в поведении, сформулируй правило (на русском)."
-}
 """

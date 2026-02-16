@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
-from src.services.db import db
+from src.database import db
+from src.repositories.fact_repository import fact_repository
 
 class FactService:
     @staticmethod
@@ -8,17 +9,7 @@ class FactService:
         """
         Fetches all verified facts for a specific chat.
         """
-        chat_id_str = str(chat_id)
-        facts_ref = db.collection("chats").document(chat_id_str).collection("verified_facts")
-        
-        facts = []
-        try:
-            async for doc in facts_ref.stream():
-                facts.append(doc.to_dict())
-            return facts
-        except Exception as e:
-            logging.error(f"Error fetching facts: {e}")
-            return []
+        return await fact_repository.get_facts(chat_id)
 
     @staticmethod
     async def get_facts_as_str(chat_id: int):
@@ -42,9 +33,6 @@ class FactService:
         """
         Adds a new verified fact.
         """
-        chat_id_str = str(chat_id)
-        facts_ref = db.collection("chats").document(chat_id_str).collection("verified_facts")
-        
         fact_data = {
             "text": text,
             "created_at": datetime.now(timezone.utc),
@@ -52,30 +40,14 @@ class FactService:
             "confidence": confidence
         }
         
-        try:
-            await facts_ref.add(fact_data)
-            logging.info(f"New fact added for chat {chat_id}: {text}")
-            return True
-        except Exception as e:
-            logging.error(f"Error adding fact: {e}")
-            return False
+        success = await fact_repository.add_fact(chat_id, fact_data)
+        if success:
+             logging.info(f"New fact added for chat {chat_id}: {text}")
+        return success
 
     @staticmethod
     async def remove_fact_by_text(chat_id: int, text_pattern: str):
         """
         Removes facts that match a pattern (e.g., when a user corrects a hallucination).
         """
-        chat_id_str = str(chat_id)
-        facts_ref = db.collection("chats").document(chat_id_str).collection("verified_facts")
-        
-        removed_count = 0
-        try:
-            async for doc in facts_ref.stream():
-                fact_text = doc.to_dict().get('text', '')
-                if text_pattern.lower() in fact_text.lower():
-                    await doc.reference.delete()
-                    removed_count += 1
-            return removed_count
-        except Exception as e:
-            logging.error(f"Error removing fact: {e}")
-            return 0
+        return await fact_repository.remove_facts_by_pattern(chat_id, text_pattern)

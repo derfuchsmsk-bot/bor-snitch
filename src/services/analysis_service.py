@@ -89,12 +89,13 @@ class AnalysisService:
         }
         
         if ai_result:
-            final_result["offenders"].extend(ai_result.get("offenders", []))
-            final_result["new_agreements"].extend(ai_result.get("new_agreements", []))
-            final_result["resolved_agreements"].extend(ai_result.get("resolved_agreements", []))
-            final_result["updated_agreements"].extend(ai_result.get("updated_agreements", []))
-            if "ai_thought_process" in ai_result:
-                final_result["ai_thought_process"] = ai_result["ai_thought_process"]
+            # ai_result is a Pydantic model (DailyAnalysisResult)
+            final_result["offenders"].extend([off.model_dump() for off in ai_result.offenders])
+            final_result["new_agreements"].extend([ag.model_dump() for ag in ai_result.new_agreements])
+            final_result["resolved_agreements"].extend([res.model_dump() for res in ai_result.resolved_agreements])
+            final_result["updated_agreements"].extend([upd.model_dump() for upd in ai_result.updated_agreements])
+            if ai_result.thought_process:
+                final_result["ai_thought_process"] = ai_result.thought_process
             
         final_result["offenders"].extend(afk_offenders)
         
@@ -241,8 +242,8 @@ class AnalysisService:
             await set_last_agreement_check(chat_id, now_utc)
             return
 
-        new_agreements = ai_result.get("new_agreements", [])
-        updated_agreements = ai_result.get("updated_agreements", [])
+        new_agreements = [ag.model_dump() for ag in ai_result.new_agreements]
+        updated_agreements = [upd.model_dump() for upd in ai_result.updated_agreements]
         
         text = ""
         if new_agreements:

@@ -13,6 +13,7 @@ from src.utils.config import settings
 from src.bot.handlers import router
 from src.services.db import apply_weekly_amnesty, db
 from src.services.analysis_service import AnalysisService
+from src.services.lore_service import LoreService
 from src.utils import messages
 
 # Configure logging
@@ -85,6 +86,24 @@ async def scheduled_weekly_decay():
     except Exception as e:
         logging.error(f"Error in scheduled amnesty: {e}")
 
+async def scheduled_lore_evolution():
+    logging.info("Starting scheduled lore evolution...")
+    try:
+        chats_ref = db.collection("chats")
+        async for chat_doc in chats_ref.stream():
+            chat_data = chat_doc.to_dict()
+            if not chat_data.get("active"):
+                continue
+            
+            chat_id = chat_doc.id
+            logging.info(f"Evolving lore for chat {chat_id}")
+            try:
+                await LoreService.evolve_lore(int(chat_id))
+            except Exception as e:
+                logging.error(f"Failed to evolve lore for chat {chat_id}: {e}")
+    except Exception as e:
+        logging.error(f"Error in scheduled lore evolution: {e}")
+
 @app.on_event("startup")
 async def on_startup():
     from src.utils.game_config import config
@@ -103,6 +122,7 @@ async def on_startup():
         
     await bot.set_my_commands(commands)
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
+    scheduler.add_job(scheduled_lore_evolution, 'cron', day_of_week='mon', hour=0, minute=30)
     
     if config.ENABLE_AGREEMENTS:
         scheduler.add_job(scheduled_agreement_check, 'interval', minutes=30)

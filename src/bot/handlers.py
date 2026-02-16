@@ -1,121 +1,28 @@
 from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
-from ..services.db import log_message, db, get_user_stats, mark_message_reported, log_reaction, get_current_season_id, get_active_agreements, get_recent_messages, get_subsequent_messages, get_message, record_gamble_result, increment_false_report_count, add_points, update_edited_message, get_chat_users, dispute_agreement
-from ..services.ai import validate_report, transcribe_media, generate_cynical_comment, validate_fact
+from ..services.db import log_message, db, log_reaction, get_active_agreements, get_message, update_edited_message, get_chat_users, dispute_agreement
+from ..services.ai import transcribe_media, validate_fact
 from ..services.fact_service import FactService
+from ..services.chat_service import ChatService
+from ..services.game_service import GameService
+from ..services.report_service import ReportService
 from ..utils.text import escape
 from ..utils.game_config import config
 from ..utils import messages
-from datetime import datetime, timezone, timedelta
 import logging
 from io import BytesIO
-import random
 
 router = Router()
-
-# Global state for cynical comment cooldowns (chat_id -> datetime)
-last_comment_time = {}
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("Я Снитч-бот. Я слежу за вами. 👁️")
     await db.collection("chats").document(str(message.chat.id)).set({"active": True}, merge=True)
 
-# Improved cynical comment caching with proper cleanup
-async def cleanup_old_cooldowns():
-    """Periodically clean up old cooldown entries to prevent memory leaks."""
-    now = datetime.now()
-    for chat_id, last_time in list(last_comment_time.items()):
-        if (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS * 2:
-            del last_comment_time[chat_id]
-
-async def get_comment_cooldown(chat_id: int) -> datetime:
-    """Get the last comment time for a chat with proper timezone handling."""
-    return last_comment_time.get(chat_id)
-
-async def set_comment_cooldown(chat_id: int):
-    """Set the last comment time for a chat."""
-    last_comment_time[chat_id] = datetime.now()
-
-async def should_comment(text: str, stats: dict) -> bool:
-    """
-    Logic for 'Smart' Cynical Comments.
-    """
-    if not text or text.startswith('/'):
-        return False
-        
-    chance = config.CYNICAL_COMMENT_CHANCE
-    text_lower = text.lower()
-    
-    # Keyword triggers (strongest trigger)
-    if any(kw in text_lower for kw in ["бот", "bot", "снитч", "snitch", "ии", "ai"]):
-        chance += 0.15
-    
-    # Question trigger (native dialogue integration)
-    if "?" in text:
-        chance += 0.05
-    
-    # Emotional trigger
-    if "!" in text:
-        chance += 0.02
-        
-    # Rant trigger
-    if len(text) > 150:
-        chance += 0.05
-        
-    # High points target trigger (roast the sinners)
-    if stats and stats.get('total_points', 0) > 100:
-        chance += 0.02
-        
-    return random.random() < chance
-
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
-    chat_id = str(message.chat.id)
-    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
-    current_season = get_current_season_id()
-    
-    docs = stats_ref.stream()
-    stats_list = []
-    
-    async for doc in docs:
-        data = doc.to_dict()
-        if data.get('season_id') == current_season:
-            stats_list.append(data)
-            
-    stats_list.sort(key=lambda x: int(x.get('total_points', 0)), reverse=True)
-    top_stats = stats_list[:10]
-    
-    text = f"🏆 <b>Топ Снитчей (Сезон {current_season}):</b>\n\n"
-    if not top_stats:
-        text += "Пока пусто. Сезон только начался! 🍂"
-    
-    for i, data in enumerate(top_stats, 1):
-        rank = escape(data.get('current_rank', 'Порядочный 😐'))
-        points = data.get('total_points', 0)
-        username = escape(data.get('username', 'Unknown'))
-        if not username.startswith("@"):
-             username = f"@{username}"
-        
-        text += f"{i}. {username} — {points} очков\n"
-        text += f"   🃏Масть: {rank}\n"
-        
-        achievements = data.get('achievements', [])
-        if achievements:
-            ach_list = []
-            for ach in achievements:
-                if isinstance(ach, dict):
-                    icon = ach.get('icon', '')
-                    title = ach.get('title', '')
-                    if title:
-                        ach_list.append(f"{title}{icon}")
-                elif isinstance(ach, str):
-                    ach_list.append(ach)
-            if ach_list:
-                text += f"   🏅Ачивки: {', '.join(ach_list)}\n"
-        text += "\n"
-        
+    text = await GameService.get_stats_report(message.chat.id)
     await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("rules"))
@@ -163,11 +70,6 @@ async def cmd_dispute(message: types.Message):
         await message.answer("Укажи ID договоренности или порядковый номер из последнего отчета.\nПример: /dispute 1")
         return
 
-    # In a real scenario we might map number to ID from session state,
-    # but here we'll assume they pass the ID or we'd need to fetch the last analysis result.
-    # For now, let's look for the agreement by ID if it's long, or by "recent index" if it's small.
-    # To keep it simple, we'll fetch active agreements and use the index.
-    
     try:
         idx = int(args[1]) - 1
         active = await get_active_agreements(message.chat.id)
@@ -225,48 +127,7 @@ async def cmd_status(message: types.Message):
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
 
-    stats = await get_user_stats(message.chat.id, target_user.id)
-    current_season = get_current_season_id()
-    
-    achievements = []
-    if stats:
-        achievements = stats.get('achievements', [])
-        if stats.get('season_id') != current_season:
-            stats['total_points'] = 0
-            stats['snitch_count'] = 0
-            stats['current_rank'] = 'Порядочный 😐'
-
-    if not stats:
-        await message.answer(f"👤 <b>{escape(target_user.full_name)}</b> без косяков. (0 очков)", parse_mode="HTML")
-        return
-
-    rank = escape(stats.get('current_rank', 'Порядочный 😐'))
-    points = stats.get('total_points', 0)
-    
-    display_name = escape(target_user.full_name)
-    if target_user.username:
-        display_name = f"@{target_user.username}"
-
-    text = (
-        f"👤 <b>Личное Дело:</b> {display_name}\n\n"
-        f"🃏 <b>Масть:</b> {rank}\n"
-        f"⚖️ <b>Очки:</b> {points}"
-    )
-
-    if achievements:
-        text += "\n\n🏅 <b>Ачивки:</b>\n"
-        for ach in achievements:
-            if isinstance(ach, str):
-                text += f"• {escape(ach)}\n"
-            elif isinstance(ach, dict):
-                icon = ach.get('icon', '🎖')
-                title = escape(ach.get('title', 'Unknown'))
-                description = escape(ach.get('description', ''))
-                text += f"{icon} <b>{title}</b>"
-                if description:
-                    text += f" — <i>{description}</i>"
-                text += "\n"
-
+    text = await GameService.get_user_status(message.chat.id, target_user)
     await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("report"))
@@ -296,70 +157,13 @@ async def cmd_report(message: types.Message):
 
     status_msg = await message.answer(messages.REPORT_ANALYSIS_START, parse_mode="HTML")
     
-    prev_msgs = await get_recent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_CONTEXT_LIMIT)
-    next_msgs = await get_subsequent_messages(message.chat.id, reported_msg.date, limit=config.REPORT_NEXT_CONTEXT_LIMIT)
+    response_text, _ = await ReportService.process_report(message, reported_msg, target_text)
     
-    context_msgs = prev_msgs + next_msgs
-    result = await validate_report(target_text, context_msgs, chat_id=message.chat.id)
-    
-    if result and result.get("valid"):
-        category = escape(result.get("category", "Unspecified"))
-        reason = escape(result.get("reason", "Violation detected"))
-        points = result.get("points", 0)
-        ai_thoughts = result.get("ai_thought_process")
-        
-        await mark_message_reported(
-            message.chat.id,
-            reported_msg.message_id,
-            message.from_user.id,
-            f"{category}: {reason}",
-            points_awarded=points,
-            ai_thought_process=ai_thoughts
-        )
-        await add_points(message.chat.id, reported_msg.from_user.id, points)
-        
-        await status_msg.edit_text(
-            messages.REPORT_ACCEPTED.format(category=category, points=points, reason=reason),
-            parse_mode="HTML"
-        )
-    else:
-        new_count = await increment_false_report_count(message.chat.id, message.from_user.id)
-        deny_reason = escape(result.get("reason", "Not a violation") if result else "AI Error")
-        response_text = messages.REPORT_REJECTED.format(reason=deny_reason)
-        
-        if new_count % config.FALSE_REPORT_LIMIT == 0:
-            await add_points(message.chat.id, message.from_user.id, config.FALSE_REPORT_PENALTY)
-            response_text += messages.REPORT_PENALTY.format(penalty=config.FALSE_REPORT_PENALTY, count=new_count)
-            
-        await status_msg.edit_text(response_text, parse_mode="HTML")
+    await status_msg.edit_text(response_text, parse_mode="HTML")
 
 @router.message(Command("casino"))
 async def cmd_casino(message: types.Message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
-    tz_moscow = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
-    now = datetime.now(tz_moscow)
-    today_str = now.strftime("%Y-%m-%d")
-    
-    stats = await get_user_stats(chat_id, user_id)
-    if stats and stats.get('last_gamble_date') == today_str:
-        await message.reply(messages.CASINO_ALREADY_PLAYED)
-        return
-
-    is_win = random.random() < config.GAMBLE_WIN_CHANCE
-    current_points = stats.get('total_points', 0) if stats else 0
-    
-    if is_win:
-        deduction = config.GAMBLE_WIN_POINTS
-        new_points = max(0, current_points - deduction)
-        text = messages.CASINO_WIN.format(deduction=deduction, new_points=new_points)
-    else:
-        penalty = config.GAMBLE_LOSS_POINTS
-        new_points = current_points + penalty
-        text = messages.CASINO_LOSS.format(penalty=penalty, new_points=new_points)
-        
-    await record_gamble_result(chat_id, user_id, new_points, today_str)
+    text = await GameService.play_casino(message.from_user.id, message.chat.id)
     await message.reply(text, parse_mode="HTML")
 
 @router.message(Command("remember"))
@@ -383,12 +187,12 @@ async def cmd_remember(message: types.Message):
     
     validation = await validate_fact(fact_text)
     
-    if not validation.get("is_fact"):
-        reason = validation.get("reason", "Это очередной воздух.")
+    if not validation.is_fact:
+        reason = validation.reason or "Это очередной воздух."
         await status_msg.edit_text(f"❌ <b>Отказ:</b> {escape(reason)}", parse_mode="HTML")
         return
 
-    final_fact = validation.get("cleaned_fact") or fact_text
+    final_fact = validation.cleaned_fact or fact_text
     
     success = await FactService.add_fact(message.chat.id, final_fact, source=f"user_{message.from_user.id}")
     if success:
@@ -422,38 +226,6 @@ async def handle_reactions(reaction: MessageReactionUpdated):
 async def handle_edited_messages(message: types.Message):
     await update_edited_message(message)
 
-def should_comment(text: str, stats: dict) -> bool:
-    """
-    Logic for 'Smart' Cynical Comments.
-    """
-    if not text or text.startswith('/'):
-        return False
-        
-    chance = config.CYNICAL_COMMENT_CHANCE
-    text_lower = text.lower()
-    
-    # Keyword triggers (strongest trigger)
-    if any(kw in text_lower for kw in ["бот", "bot", "снитч", "snitch", "ии", "ai"]):
-        chance += 0.15
-    
-    # Question trigger (native dialogue integration)
-    if "?" in text:
-        chance += 0.05
-    
-    # Emotional trigger
-    if "!" in text:
-        chance += 0.02
-        
-    # Rant trigger
-    if len(text) > 150:
-        chance += 0.05
-        
-    # High points target trigger (roast the sinners)
-    if stats and stats.get('total_points', 0) > 100:
-        chance += 0.02
-        
-    return random.random() < chance
-
 @router.message(F.text | F.sticker | F.voice | F.video_note)
 async def handle_messages(message: types.Message):
     override_text = None
@@ -480,53 +252,53 @@ async def handle_messages(message: types.Message):
     except Exception as e:
         logging.error(f"Failed to log message: {e}")
 
-    # Cynical Comment Logic
+    # Cynical Comment Logic via ChatService
     comment_text = message.text or override_text
-    if comment_text and not comment_text.startswith('/'):
+    
+    comment = await ChatService.process_cynical_comment(message, comment_text)
+    if comment:
+        sent_msg = await message.reply(comment)
         try:
-            chat_id = message.chat.id
-            now = datetime.now()
-            last_time = last_comment_time.get(chat_id)
-            
-            # Robust Mention Detection: @bot or reply to bot
-            bot_user = await message.bot.get_me()
-            is_mentioned = False
-            
-            if message.text:
-                is_mentioned = f"@{bot_user.username}" in message.text
-            
-            if not is_mentioned and message.reply_to_message:
-                is_mentioned = message.reply_to_message.from_user.id == bot_user.id
-            
-            # If mentioned, ignore cooldown. Otherwise check cooldown.
-            if is_mentioned or (not last_time or (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS):
-                user_stats = await get_user_stats(chat_id, message.from_user.id)
-                
-                # If mentioned, force reply. Otherwise roll dice.
-                if is_mentioned or should_comment(comment_text, user_stats):
-                    # Increased context limit to 10 for better conversation history awareness
-                    context_msgs = await get_recent_messages(chat_id, message.date, limit=10)
-                    username = message.from_user.username or message.from_user.first_name
-                    comment = await generate_cynical_comment(context_msgs, comment_text, username, chat_id=chat_id)
-                    
-                    if comment:
-                        sent_msg = await message.reply(comment)
-                        try:
-                            # Log bot's own responses to Firestore
-                            await log_message(sent_msg)
-                        except Exception as e:
-                            logging.error(f"Failed to log bot message: {e}")
-                        last_comment_time[chat_id] = now
-
-                # Correction Loop: If user says "Это неправда" or "Ты врешь" etc.
-                correction_keywords = ["неправда", "врешь", "забудь", "ошибка", "wrong", "lie", "hallucination"]
-                if is_mentioned and any(kw in comment_text.lower() for kw in correction_keywords):
-                    # Try to find what exactly was wrong.
-                    # For simplicity, we remove the last mentioned fact if it's a direct reply to bot
-                    if message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id:
-                        # We don't know exactly WHICH fact was wrong, but we can log it or
-                        # just acknowledge that the bot might have hallucinated.
-                        # Real implementation would use AI to extract the "wrong" fact.
-                        await message.reply("🤐 Понял, завязываю галлюцинировать. Если я сказал что-то не то — сорян.")
+            await log_message(sent_msg)
         except Exception as e:
-            logging.error(f"Error in cynical comment logic: {e}")
+            logging.error(f"Failed to log bot message: {e}")
+            
+    # Correction Loop: If user says "Это неправда" or "Ты врешь" etc.
+    # Note: process_cynical_comment in ChatService handles generation, but this specific 'correction' logic 
+    # was inline in handlers.py. It's a bit of a niche feature. 
+    # I should check if I moved it to ChatService. I didn't see it in my ChatService implementation.
+    # The ChatService.process_cynical_comment I wrote mostly handles GENERATING the comment.
+    # The correction loop checks the USER'S message for keywords like "lie".
+    
+    # Let's add the correction logic back here or move it to ChatService.
+    # Since it interacts with the bot acknowledging a mistake, it fits in ChatService or here.
+    # The original logic was:
+    # correction_keywords = ["неправда", "врешь", "забудь", "ошибка", "wrong", "lie", "hallucination"]
+    # if is_mentioned and any(kw in comment_text.lower() for kw in correction_keywords):
+    #   ...
+    
+    # My ChatService.process_cynical_comment handles the bot REPLYING. 
+    # It doesn't handle the bot listening to corrections.
+    
+    # Let's quickly check ChatService again.
+    # I see I implemented process_cynical_comment which returns a comment or None.
+    
+    # I will re-implement the correction logic here for now as it is a specific reaction handler,
+    # OR I can add a method `ChatService.check_for_correction(message)`?
+    # It's simple enough to keep here, or I can update ChatService.
+    
+    # Let's keep it here for now to avoid re-writing ChatService unless necessary.
+    # Wait, the original logic relied on `is_mentioned` which was calculated inside the block.
+    # I should recalculate `is_mentioned` here if I want to use it.
+    
+    bot_user = await message.bot.get_me()
+    is_mentioned = False
+    if message.text:
+        is_mentioned = f"@{bot_user.username}" in message.text
+    if not is_mentioned and message.reply_to_message:
+        is_mentioned = message.reply_to_message.from_user.id == bot_user.id
+        
+    correction_keywords = ["неправда", "врешь", "забудь", "ошибка", "wrong", "lie", "hallucination"]
+    if is_mentioned and comment_text and any(kw in comment_text.lower() for kw in correction_keywords):
+        if message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id:
+            await message.reply("🤐 Понял, завязываю галлюцинировать. Если я сказал что-то не то — сорян.")
