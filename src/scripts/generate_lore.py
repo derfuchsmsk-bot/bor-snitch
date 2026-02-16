@@ -133,7 +133,7 @@ async def main():
             continue
             
         chat_id = chat_doc.id
-        if str(chat_id) != "-954103380":
+        if str(chat_id) != str(settings.MAIN_CHAT_ID):
             continue
 
         logging.info(f"Processing chat {chat_id}...")

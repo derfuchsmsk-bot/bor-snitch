@@ -11,10 +11,11 @@ sys.path.append(os.getcwd())
 
 from src.services.lore_service import LoreService
 from src.utils.lore import LORE_DATA
+from src.utils.config import settings
 
 async def migrate():
     # Primary chat ID from generate_monthly_lore.py or config
-    chat_id = -954103380 
+    chat_id = settings.MAIN_CHAT_ID
     
     print(f"Migrating default lore to Firestore for chat {chat_id}...")
     

@@ -13,9 +13,10 @@ sys.path.append(os.getcwd())
 from src.services.lore_service import LoreService
 from src.services.db import db
 from src.utils.lore import LORE_DATA
+from src.utils.config import settings
 
 async def migrate_v2():
-    chat_id = -954103380 # Main chat ID
+    chat_id = settings.MAIN_CHAT_ID # Main chat ID
     chat_id_str = str(chat_id)
     
     print(f"Migrating lore to V2 (Tiered Truth) for chat {chat_id}...")

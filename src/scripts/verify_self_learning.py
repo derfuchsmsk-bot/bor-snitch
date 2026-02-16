@@ -11,9 +11,10 @@ sys.path.append(os.getcwd())
 
 from src.services.ai import analyze_daily_logs
 from src.services.lore_service import LoreService
+from src.utils.config import settings
 
 async def verify_injection():
-    chat_id = -954103380
+    chat_id = settings.MAIN_CHAT_ID
     print(f"Verifying lore injection for chat {chat_id}...")
     
     # 1. Check if we can get lore

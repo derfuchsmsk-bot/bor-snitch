@@ -13,9 +13,10 @@ sys.path.append(os.getcwd())
 from src.services.db import db, get_logs_for_time_range
 from src.services.ai import summarize_day
 from src.utils.game_config import config
+from src.utils.config import settings
 
 async def run_history_summarization():
-    chat_id = -954103380
+    chat_id = settings.MAIN_CHAT_ID
     
     # Analyze last 7 days
     end_date = datetime.now(timezone.utc)
