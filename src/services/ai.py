@@ -238,65 +238,73 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
             reraise=True
         )
         async def _generate_with_retry():
+            # Define schema properties
+            schema_properties = {
+                "thought_process": {"type": "STRING", "description": "Подробный разбор полетов и анализ ситуации перед вынесением вердикта"},
+                "offenders": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "user_id": {"type": "INTEGER", "description": "Telegram User ID"},
+                            "username": {"type": "STRING", "description": "Username"},
+                            "category": {"type": "STRING", "description": "Toxicity | Snitching"},
+                            "points": {"type": "INTEGER", "description": "Points"},
+                            "reason": {"type": "STRING", "description": "Reason"},
+                            "quote": {"type": "STRING", "description": "Quote"}
+                        },
+                        "required": ["username", "category", "points", "reason"]
+                    }
+                }
+            }
+            
+            required_fields = ["thought_process", "offenders"]
+
+            if config.ENABLE_AGREEMENTS:
+                schema_properties["new_agreements"] = {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "text": {"type": "STRING", "description": "Описание договоренности СТРОГО НА РУССКОМ"},
+                            "users": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Список участников"},
+                            "type": {"type": "STRING", "description": "vow | pact | public"},
+                            "expires_at": {"type": "STRING", "description": "YYYY-MM-DDTHH:MM:SS"},
+                            "reasoning": {"type": "STRING", "description": "Reasoning"}
+                        },
+                        "required": ["text", "users", "type", "reasoning"]
+                    }
+                }
+                schema_properties["resolved_agreements"] = {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "id": {"type": "STRING", "description": "ID"},
+                            "status": {"type": "STRING", "description": "fulfilled | broken"},
+                            "reason": {"type": "STRING", "description": "Reason"}
+                        },
+                        "required": ["id", "status", "reason"]
+                    }
+                }
+                schema_properties["updated_agreements"] = {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "id": {"type": "STRING", "description": "ID"},
+                            "text": {"type": "STRING", "description": "New text"},
+                            "reason": {"type": "STRING", "description": "Reason"}
+                        },
+                        "required": ["id", "text", "reason"]
+                    }
+                }
+                required_fields.extend(["new_agreements", "resolved_agreements", "updated_agreements"])
+
             daily_analysis_schema = {
                 "type": "OBJECT",
-                "properties": {
-                    "thought_process": {"type": "STRING", "description": "Подробный разбор полетов и анализ ситуации перед вынесением вердикта"},
-                    "offenders": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "user_id": {"type": "INTEGER", "description": "Telegram User ID"},
-                                "username": {"type": "STRING", "description": "Username"},
-                                "category": {"type": "STRING", "description": "Toxicity | Snitching"},
-                                "points": {"type": "INTEGER", "description": "Points"},
-                                "reason": {"type": "STRING", "description": "Reason"},
-                                "quote": {"type": "STRING", "description": "Quote"}
-                            },
-                            "required": ["username", "category", "points", "reason"]
-                        }
-                    },
-                    "new_agreements": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "text": {"type": "STRING", "description": "Описание договоренности СТРОГО НА РУССКОМ"},
-                                "users": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Список участников"},
-                                "type": {"type": "STRING", "description": "vow | pact | public"},
-                                "expires_at": {"type": "STRING", "description": "YYYY-MM-DDTHH:MM:SS"},
-                                "reasoning": {"type": "STRING", "description": "Reasoning"}
-                            },
-                            "required": ["text", "users", "type", "reasoning"]
-                        }
-                    },
-                    "resolved_agreements": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "id": {"type": "STRING", "description": "ID"},
-                                "status": {"type": "STRING", "description": "fulfilled | broken"},
-                                "reason": {"type": "STRING", "description": "Reason"}
-                            },
-                            "required": ["id", "status", "reason"]
-                        }
-                    },
-                    "updated_agreements": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "id": {"type": "STRING", "description": "ID"},
-                                "text": {"type": "STRING", "description": "New text"},
-                                "reason": {"type": "STRING", "description": "Reason"}
-                            },
-                            "required": ["id", "text", "reason"]
-                        }
-                    }
-                },
-                "required": ["thought_process", "offenders", "new_agreements", "resolved_agreements", "updated_agreements"]
+                "properties": schema_properties,
+                "required": required_fields
             }
 
             return await model.generate_content_async(
