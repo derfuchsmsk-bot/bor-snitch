@@ -238,11 +238,72 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
             reraise=True
         )
         async def _generate_with_retry():
+            daily_analysis_schema = {
+                "type": "OBJECT",
+                "properties": {
+                    "thought_process": {"type": "STRING", "description": "Подробный разбор полетов и анализ ситуации перед вынесением вердикта"},
+                    "offenders": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "user_id": {"type": "INTEGER", "description": "Telegram User ID"},
+                                "username": {"type": "STRING", "description": "Username"},
+                                "category": {"type": "STRING", "description": "Toxicity | Snitching"},
+                                "points": {"type": "INTEGER", "description": "Points"},
+                                "reason": {"type": "STRING", "description": "Reason"},
+                                "quote": {"type": "STRING", "description": "Quote"}
+                            },
+                            "required": ["username", "category", "points", "reason"]
+                        }
+                    },
+                    "new_agreements": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "text": {"type": "STRING", "description": "Описание договоренности СТРОГО НА РУССКОМ"},
+                                "users": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Список участников"},
+                                "type": {"type": "STRING", "description": "vow | pact | public"},
+                                "expires_at": {"type": "STRING", "description": "YYYY-MM-DDTHH:MM:SS"},
+                                "reasoning": {"type": "STRING", "description": "Reasoning"}
+                            },
+                            "required": ["text", "users", "type", "reasoning"]
+                        }
+                    },
+                    "resolved_agreements": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "id": {"type": "STRING", "description": "ID"},
+                                "status": {"type": "STRING", "description": "fulfilled | broken"},
+                                "reason": {"type": "STRING", "description": "Reason"}
+                            },
+                            "required": ["id", "status", "reason"]
+                        }
+                    },
+                    "updated_agreements": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "id": {"type": "STRING", "description": "ID"},
+                                "text": {"type": "STRING", "description": "New text"},
+                                "reason": {"type": "STRING", "description": "Reason"}
+                            },
+                            "required": ["id", "text", "reason"]
+                        }
+                    }
+                },
+                "required": ["thought_process", "offenders", "new_agreements", "resolved_agreements", "updated_agreements"]
+            }
+
             return await model.generate_content_async(
                 contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
                 generation_config={
                     "response_mime_type": "application/json",
-                    "response_schema": DailyAnalysisResult
+                    "response_schema": daily_analysis_schema
                 }
             )
 
@@ -300,11 +361,33 @@ async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummar
     """
     
     try:
+        memory_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "summary": {"type": "STRING", "description": "Short summary"},
+                "key_facts": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Key facts"},
+                "emotional_vibe": {"type": "STRING", "description": "Vibe"},
+                "major_events": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "title": {"type": "STRING"},
+                            "participants": {"type": "ARRAY", "items": {"type": "STRING"}},
+                            "outcome": {"type": "STRING"}
+                        },
+                        "required": ["title", "participants", "outcome"]
+                    }
+                }
+            },
+            "required": ["summary", "key_facts", "emotional_vibe", "major_events"]
+        }
+
         response = await model.generate_content_async(
             contents=[MEMORY_SUMMARIZATION_PROMPT, prompt],
             generation_config={
                 "response_mime_type": "application/json",
-                "response_schema": MemorySummaryResult
+                "response_schema": memory_schema
             }
         )
         result_dict = json.loads(response.text)
