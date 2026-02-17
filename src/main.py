@@ -179,6 +179,28 @@ async def weekly_decay(request: Request, auth=Depends(verify_jwt)):
         parse_mode="HTML"
     )
     return {"status": "amnesty_applied"}
+
+@app.post("/evolve_lore")
+async def evolve_lore_endpoint(request: Request, auth=Depends(verify_jwt)):
+    """
+    Эндпоинт для триггера эволюции лора из Google Cloud Scheduler.
+    """
+    data = await request.json()
+    chat_id = data.get("chat_id")
+    
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Missing chat_id")
+        
+    logging.info(f"Manual lore evolution triggered for chat {chat_id}")
+    
+    try:
+        # Запускаем эволюцию (это может занять время, лучше делать в фоне,
+        # но для Cloud Scheduler синхронный ответ тоже допустим, если уложимся в таймаут)
+        await LoreService.evolve_lore(int(chat_id))
+        return {"status": "evolution_completed", "chat_id": chat_id}
+    except Exception as e:
+        logging.error(f"Lore evolution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     
 @app.get("/token")
 @limiter.limit("5/minute")
