@@ -63,11 +63,21 @@ class LearningService:
         """
         
         try:
+            feedback_schema = {
+                "type": "OBJECT",
+                "properties": {
+                    "verdict": {"type": "STRING", "description": "fair | mistake | unclear"},
+                    "reasoning": {"type": "STRING", "description": "Verdict reason"},
+                    "learned_rule": {"type": "STRING", "description": "New rule if needed"}
+                },
+                "required": ["verdict", "reasoning"]
+            }
+
             response = await model.generate_content_async(
                 contents=[FEEDBACK_ANALYSIS_PROMPT, prompt],
                 generation_config={
                     "response_mime_type": "application/json",
-                    "response_schema": FeedbackAnalysisResult
+                    "response_schema": feedback_schema
                 }
             )
             

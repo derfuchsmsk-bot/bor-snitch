@@ -101,11 +101,23 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
         reraise=True
     )
     async def _generate_with_retry():
+        report_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "thought_process": {"type": "STRING", "description": "Размышления о контексте"},
+                "valid": {"type": "BOOLEAN", "description": "Valid complaint?"},
+                "category": {"type": "STRING", "description": "Toxicity | Snitching"},
+                "points": {"type": "INTEGER", "description": "Points"},
+                "reason": {"type": "STRING", "description": "Verdict reason"}
+            },
+            "required": ["thought_process", "valid", "reason"]
+        }
+
         return await model.generate_content_async(
             contents=[get_report_validation_prompt(), prompt],
             generation_config={
                 "response_mime_type": "application/json",
-                "response_schema": ReportValidationResult
+                "response_schema": report_schema
             }
         )
 
@@ -499,11 +511,21 @@ async def validate_fact(text: str) -> FactValidationResult:
     prompt = f"ТЕКСТ ДЛЯ ПРОВЕРКИ:\n\"{text}\""
 
     try:
+        fact_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "is_fact": {"type": "BOOLEAN", "description": "Is historical fact?"},
+                "cleaned_fact": {"type": "STRING", "description": "Cleaned text in Russian"},
+                "reason": {"type": "STRING", "description": "Reasoning"}
+            },
+            "required": ["is_fact", "reason"]
+        }
+
         response = await model.generate_content_async(
             contents=[FACT_VALIDATION_PROMPT, prompt],
             generation_config={
                 "response_mime_type": "application/json",
-                "response_schema": FactValidationResult
+                "response_schema": fact_schema
             }
         )
         
