@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone, timedelta, time
 from google.cloud import firestore
 from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
 
 from src.utils.config import settings
 from src.utils.game_config import config
@@ -78,7 +79,11 @@ class AnalysisService:
         
         if not logs and not afk_offenders:
             logging.info("No logs and no AFK violations.")
-            await self.bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов и нарушений)")
+            try:
+                await self.bot.send_message(chat_id=chat_id, text="Сегодня слишком тихо... Снитч не найден. (Нет логов и нарушений)")
+            except TelegramForbiddenError:
+                logging.error(f"DIAGNOSIS_CHECK: Bot kicked from chat {chat_id}. Cannot send message.")
+                raise
             return {"status": "no logs"}
 
         final_result = {
@@ -195,7 +200,11 @@ class AnalysisService:
                     orig_users = ", ".join(orig_ag.get('users', [])) if orig_ag else '???'
                     text += f"📝 {orig_users}: {escape(new_text)}\n"
                      
-            await self.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            try:
+                await self.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            except TelegramForbiddenError:
+                 logging.error(f"DIAGNOSIS_CHECK: Bot kicked from chat {chat_id}. Cannot send daily report.")
+                 raise
 
         try:
             await LearningService.analyze_feedback(chat_id, today_str)
