@@ -20,7 +20,7 @@ class GameConfig:
     FALSE_REPORT_PENALTY = 15
 
     # Rules
-    IGNORE_DAYS_BEFORE_PENALTY = 3
+    IGNORE_DAYS_BEFORE_PENALTY = 2
     
     # Random Cynical Comments
     CYNICAL_COMMENT_CHANCE = 0.002 # 
