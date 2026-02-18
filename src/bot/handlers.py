@@ -96,7 +96,7 @@ async def cmd_dispute(message: types.Message):
 
 @router.message(Command("all"))
 async def cmd_all(message: types.Message):
-    users = await get_chat_users(message.chat.id)
+    users, _ = await get_chat_users(message.chat.id)
     if not users:
         await message.answer(messages.NO_USERS_TO_TAG)
         return

@@ -67,7 +67,7 @@ AGREEMENT_DISPUTE_NOT_FOUND = "❌ <b>Ошибка:</b> Договореннос
 AMNESTY_MESSAGE = "🧹 <b>Еженедельная Амнистия!</b>\n\nСписана половина очков, набранных за эту неделю. Живите пока."
 
 # Misc
-ALL_COMMAND_TITLE = "📣 <b>ВНИМАНИЕ ВСЕМ!</b>\n\n"
+ALL_COMMAND_TITLE = "📣 <b>САЙОНАРА СБОР!</b>\n\n"
 NO_USERS_TO_TAG = "В этом чате еще никто не отметился..."
 REPORT_ANALYSIS_START = "🕵️‍♂️ <b>Анализ доноса...</b>"
 REPORT_ACCEPTED = (
