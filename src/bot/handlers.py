@@ -96,30 +96,41 @@ async def cmd_dispute(message: types.Message):
 
 @router.message(Command("all"))
 async def cmd_all(message: types.Message):
-    users, _ = await get_chat_users(message.chat.id)
-    if not users:
-        await message.answer(messages.NO_USERS_TO_TAG)
-        return
+    logging.info(f"Received /all command in chat {message.chat.id}")
+    try:
+        users, _ = await get_chat_users(message.chat.id)
+        logging.info(f"Found {len(users) if users else 0} users in chat {message.chat.id}")
+        
+        if not users:
+            await message.answer(messages.NO_USERS_TO_TAG)
+            return
 
-    mentions = []
-    for u in users:
-        user_id = u['user_id']
-        username = u['username']
-        full_name = u['full_name'] or "Аноним"
-        if username:
-            mentions.append(f"@{username}")
-        else:
-            mentions.append(f"<a href='tg://user?id={user_id}'>{escape(full_name)}</a>")
-    
-    if not mentions:
-        await message.answer("Некого тегать.")
-        return
+        mentions = []
+        for u in users:
+            user_id = u['user_id']
+            username = u['username']
+            full_name = u['full_name'] or "Аноним"
+            if username:
+                mentions.append(f"@{username}")
+            else:
+                mentions.append(f"<a href='tg://user?id={user_id}'>{escape(full_name)}</a>")
+        
+        logging.info(f"Generated {len(mentions)} mentions for chat {message.chat.id}")
+        
+        if not mentions:
+            await message.answer("Некого тегать.")
+            return
 
-    chunk_size = config.MENTION_CHUNK_SIZE
-    for i in range(0, len(mentions), chunk_size):
-        chunk = mentions[i:i + chunk_size]
-        text = messages.ALL_COMMAND_TITLE + " ".join(chunk)
-        await message.answer(text, parse_mode="HTML")
+        chunk_size = config.MENTION_CHUNK_SIZE
+        for i in range(0, len(mentions), chunk_size):
+            chunk = mentions[i:i + chunk_size]
+            text = messages.ALL_COMMAND_TITLE + " ".join(chunk)
+            logging.info(f"Sending chunk {i//chunk_size + 1} with {len(chunk)} mentions")
+            await message.answer(text, parse_mode="HTML")
+            
+    except Exception as e:
+        logging.error(f"Error in cmd_all: {e}", exc_info=True)
+        await message.answer("⚠️ Ошибка при выполнении команды /all. Обратитесь к администратору.")
 
 @router.message(Command("status", "me"))
 async def cmd_status(message: types.Message):

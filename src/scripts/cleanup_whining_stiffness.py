@@ -85,6 +85,16 @@ async def cleanup_whining_stiffness(dry_run=True):
     
     chats_ref = db.collection("chats")
     
+    # Mapping old IDs/names to current IDs
+    ID_MAPPING = {
+        "1": "615090692", # Влад Берёзкин -> prodolzhayem
+        "3": "460322254", # Костя Кабан -> shaloputnik
+        "4": "383998331", # Паштет -> arsinov
+        "5": "974975544", # Макс Костюк -> MosesKmS
+        "2": "200666412", # Elisey Khrapov -> derfuchz
+        "6": "991728230", # Ваня Любецкий -> ioann_thegreat
+    }
+
     total_deductions = {} # user_id -> points_to_remove
     user_names = {}
     
@@ -154,9 +164,20 @@ async def cleanup_whining_stiffness(dry_run=True):
                         continue
                 
                 if points_to_remove > 0:
+                    # Apply mapping if needed (old IDs to current ones)
+                    if user_id in ID_MAPPING:
+                        user_id = ID_MAPPING[user_id]
 
                     # Calculate how much of these points are still "alive"
-                    remaining_points, amnesties = calculate_decayed_points(points_to_remove, date_key)
+                    # User clarified: Points are halved ONLY ONCE at the first Sunday amnesty.
+                    current_points_in_balance, amnesties = calculate_decayed_points(points_to_remove, date_key)
+                    
+                    if amnesties >= 1:
+                        # If at least one Sunday passed, points were halved once
+                        remaining_points = points_to_remove // 2
+                    else:
+                        # No Sunday passed, points are still full
+                        remaining_points = points_to_remove
                     
                     if remaining_points > 0:
                         if user_id not in total_deductions:
@@ -168,7 +189,7 @@ async def cleanup_whining_stiffness(dry_run=True):
                         print(f"  [MATCH] {date_key}: {username} - {reason} ({points} pts)")
                         if points_to_remove != points:
                              print(f"      -> Identified {points_to_remove} pts for removal (mixed penalty).")
-                        print(f"      -> {amnesties} amnesties passed. Remaining effect: {remaining_points} pts")
+                        print(f"      -> {amnesties} Sundays passed. Removing {remaining_points} pts (Halved once: {amnesties >= 1})")
 
     print("\n--- SUMMARY OF DEDUCTIONS ---")
     if not total_deductions:
