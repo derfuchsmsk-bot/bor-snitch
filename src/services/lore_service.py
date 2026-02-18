@@ -5,7 +5,6 @@ from google.cloud import firestore
 from vertexai.generative_models import GenerativeModel
 
 from .db import db
-from ..utils.lore import LORE_DATA
 from ..utils.game_config import config
 from .fact_service import FactService
 
@@ -20,22 +19,33 @@ class LoreService:
     async def get_lore(chat_id: int):
         """
         Fetches lore for a specific chat.
-        Falls back to default lore if not found in DB.
+        Falls back to empty default if not found in DB.
         """
         chat_id_str = str(chat_id)
         doc_ref = db.collection("chats").document(chat_id_str).collection("lore").document("current")
+        
+        default_lore = {
+            "core": {
+                "universe": "Cynical Snitch Bot Ecosystem",
+                "characters": [],
+                "concepts": [],
+                "dictionary": {}
+            },
+            "current_context": "Initial state.",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
         
         try:
             doc = await doc_ref.get()
             if doc.exists:
                 data = doc.to_dict()
-                return data.get("data", LORE_DATA)
+                return data.get("data") or data # Handle both nested and flat structures
             else:
-                logging.info(f"Lore not found for chat {chat_id}, using default.")
-                return LORE_DATA
+                logging.info(f"Lore not found for chat {chat_id}, using minimal default.")
+                return default_lore
         except Exception as e:
             logging.error(f"Error fetching lore from DB: {e}")
-            return LORE_DATA
+            return default_lore
 
     @staticmethod
     async def get_lore_as_json(chat_id: int):

@@ -111,7 +111,7 @@ async def cmd_all(message: types.Message):
             username = u['username']
             full_name = u['full_name'] or "Аноним"
             if username:
-                mentions.append(f"@{username}")
+                mentions.append(f"@{escape(username)}")
             else:
                 mentions.append(f"<a href='tg://user?id={user_id}'>{escape(full_name)}</a>")
         

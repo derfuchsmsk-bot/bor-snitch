@@ -10,7 +10,6 @@ load_dotenv()
 sys.path.append(os.getcwd())
 
 from src.services.lore_service import LoreService
-from src.utils.lore import LORE_DATA
 from src.utils.config import settings
 
 async def migrate():
@@ -20,7 +19,11 @@ async def migrate():
     print(f"Migrating default lore to Firestore for chat {chat_id}...")
     
     try:
-        version = await LoreService.update_lore(chat_id, LORE_DATA, generated_by="initial_migration")
+        # Since LORE_DATA is gone, we migrate an empty structure or from what's in LoreService
+        empty_lore = {
+            "core": {"universe": "Default", "characters": [], "concepts": [], "dictionary": {}}
+        }
+        version = await LoreService.update_lore(chat_id, empty_lore, generated_by="initial_migration")
         print(f"Migration successful! Lore version {version} created.")
     except Exception as e:
         print(f"Migration failed: {e}")

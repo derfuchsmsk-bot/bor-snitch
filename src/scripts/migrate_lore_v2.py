@@ -12,7 +12,6 @@ sys.path.append(os.getcwd())
 
 from src.services.lore_service import LoreService
 from src.services.db import db
-from src.utils.lore import LORE_DATA
 from src.utils.config import settings
 
 async def migrate_v2():
@@ -22,23 +21,16 @@ async def migrate_v2():
     print(f"Migrating lore to V2 (Tiered Truth) for chat {chat_id}...")
     
     # 1. Prepare new structure
-    # We split LORE_DATA into core and initial facts
+    # Placeholder for migration if needed, but lore is already in DB
     core = {
-        "universe": LORE_DATA.get("universe"),
-        "characters": LORE_DATA.get("characters"),
-        "concepts": LORE_DATA.get("concepts"),
-        "dictionary": LORE_DATA.get("dictionary")
+        "universe": "Default",
+        "characters": [],
+        "concepts": [],
+        "dictionary": {}
     }
     
-    # Initial verified facts from legendary events
+    # Initial verified facts
     verified_facts = []
-    for event in LORE_DATA.get("legendary_events", []):
-        verified_facts.append({
-            "text": event.get("desc") or event.get("title"),
-            "date": event.get("date") or event.get("year"),
-            "confidence": 1.0,
-            "source": "historical_legend"
-        })
 
     # 2. Update the main lore document
     new_lore_data = {
