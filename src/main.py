@@ -121,19 +121,34 @@ async def scheduled_lore_evolution():
 @app.on_event("startup")
 async def on_startup():
     from src.utils.game_config import config
-    commands = [
-        types.BotCommand(command="status", description="Мое личное дело"),
-        types.BotCommand(command="stats", description="Топ Снитчей"),
-        types.BotCommand(command="rules", description="Кодекс Снитча"),
-        types.BotCommand(command="report", description="Донос (Reply)"),
-        types.BotCommand(command="casino", description="Испытать удачу"),
-        types.BotCommand(command="all", description="Позвать всех"),
-        types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
-    ]
-    if config.ENABLE_AGREEMENTS:
-        commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
-        commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
-        
+    
+    # Base commands that should always be visible (or admin commands)
+    # We remove the regular commands so they don't show up in the menu when disabled
+    # However, setting commands dynamically based on state might require a different approach
+    # For now, let's keep the basic commands but maybe hide them if disabled, 
+    # but the simplest is just to leave them or let them return "bot is disabled"
+    # Actually, the user wants them GONE from the menu.
+    
+    if config.BOT_DISABLED:
+        # If disabled at startup, only show admin commands
+        commands = [
+            types.BotCommand(command="bot_enable", description="Включить бота (Admin)"),
+        ]
+    else:
+        commands = [
+            types.BotCommand(command="status", description="Мое личное дело"),
+            types.BotCommand(command="stats", description="Топ Снитчей"),
+            types.BotCommand(command="rules", description="Кодекс Снитча"),
+            types.BotCommand(command="report", description="Донос (Reply)"),
+            types.BotCommand(command="casino", description="Испытать удачу"),
+            types.BotCommand(command="all", description="Позвать всех"),
+            types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
+            types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
+        ]
+        if config.ENABLE_AGREEMENTS:
+            commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
+            commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
+            
     await bot.set_my_commands(commands)
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
     scheduler.add_job(scheduled_lore_evolution, 'cron', day_of_week='mon', hour=0, minute=30)

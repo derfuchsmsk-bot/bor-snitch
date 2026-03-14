@@ -15,6 +15,31 @@ from io import BytesIO
 
 router = Router()
 
+async def update_bot_commands(message: types.Message, disabled: bool):
+    """Updates the bot commands menu based on the disabled state."""
+    from ..utils.game_config import config
+    
+    if disabled:
+        commands = [
+            types.BotCommand(command="bot_enable", description="Включить бота (Admin)"),
+        ]
+    else:
+        commands = [
+            types.BotCommand(command="status", description="Мое личное дело"),
+            types.BotCommand(command="stats", description="Топ Снитчей"),
+            types.BotCommand(command="rules", description="Кодекс Снитча"),
+            types.BotCommand(command="report", description="Донос (Reply)"),
+            types.BotCommand(command="casino", description="Испытать удачу"),
+            types.BotCommand(command="all", description="Позвать всех"),
+            types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
+            types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
+        ]
+        if config.ENABLE_AGREEMENTS:
+            commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
+            commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
+            
+    await message.bot.set_my_commands(commands)
+
 @router.message(Command("bot_disable"))
 async def cmd_bot_disable(message: types.Message):
     from ..utils.game_config import config
@@ -26,7 +51,11 @@ async def cmd_bot_disable(message: types.Message):
 
     config.BOT_DISABLED = True
     logging.warning(f"BOT GLOBALLY DISABLED by {message.from_user.id} in chat {message.chat.id}")
-    await message.answer("🛑 <b>БОТ ПОЛНОСТЬЮ ОТКЛЮЧЕН.</b>\nЯ больше не реагирую ни на какие команды и сообщения.", parse_mode="HTML")
+    
+    # Update commands menu to remove everything except enable
+    await update_bot_commands(message, disabled=True)
+    
+    await message.answer("🛑 <b>БОТ ПОЛНОСТЬЮ ОТКЛЮЧЕН.</b>\nКоманды скрыты, я больше не реагирую ни на какие сообщения.", parse_mode="HTML")
 
 @router.message(Command("bot_enable"))
 async def cmd_bot_enable(message: types.Message):
@@ -38,7 +67,11 @@ async def cmd_bot_enable(message: types.Message):
 
     config.BOT_DISABLED = False
     logging.warning(f"BOT GLOBALLY ENABLED by {message.from_user.id} in chat {message.chat.id}")
-    await message.answer("✅ <b>БОТ ВКЛЮЧЕН.</b>\nЯ снова слежу за вами.", parse_mode="HTML")
+    
+    # Restore full commands menu
+    await update_bot_commands(message, disabled=False)
+    
+    await message.answer("✅ <b>БОТ ВКЛЮЧЕН.</b>\nЯ снова слежу за вами, команды возвращены.", parse_mode="HTML")
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
