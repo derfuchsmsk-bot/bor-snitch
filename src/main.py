@@ -130,10 +130,8 @@ async def on_startup():
     # Actually, the user wants them GONE from the menu.
     
     if config.BOT_DISABLED:
-        # If disabled at startup, only show admin commands
-        commands = [
-            types.BotCommand(command="bot_enable", description="Включить бота (Admin)"),
-        ]
+        # If disabled at startup, show absolutely NO commands
+        commands = []
     else:
         commands = [
             types.BotCommand(command="status", description="Мое личное дело"),

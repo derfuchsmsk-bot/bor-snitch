@@ -20,9 +20,7 @@ async def update_bot_commands(message: types.Message, disabled: bool):
     from ..utils.game_config import config
     
     if disabled:
-        commands = [
-            types.BotCommand(command="bot_enable", description="Включить бота (Admin)"),
-        ]
+        commands = [] # Убираем абсолютно все команды, даже bot_enable
     else:
         commands = [
             types.BotCommand(command="status", description="Мое личное дело"),
