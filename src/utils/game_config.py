@@ -2,6 +2,9 @@ from dataclasses import dataclass
 
 @dataclass
 class GameConfig:
+    # Global Bot State
+    BOT_DISABLED = True
+
     # Points
     POINTS_WHINING = 0
     POINTS_STIFFNESS = 0

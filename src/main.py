@@ -30,7 +30,12 @@ scheduler = AsyncIOScheduler()
 bot = Bot(token=settings.TELEGRAM_TOKEN)
 analysis_service = AnalysisService(bot)
 
+from src.utils.game_config import config
+
 async def scheduled_agreement_check():
+    if config.BOT_DISABLED:
+        logging.info("Skipping scheduled agreement check because bot is disabled.")
+        return
     logging.info("Starting scheduled agreement check...")
     try:
         chats_ref = db.collection("chats")
@@ -43,6 +48,9 @@ async def scheduled_agreement_check():
         logging.error(f"Error in scheduled agreement check: {e}")
 
 async def scheduled_daily_analysis():
+    if config.BOT_DISABLED:
+        logging.info("Skipping scheduled daily analysis because bot is disabled.")
+        return
     logging.info("Starting scheduled daily analysis...")
     try:
         chats_ref = db.collection("chats")
@@ -62,6 +70,9 @@ async def scheduled_daily_analysis():
         logging.error(f"Error in scheduled analysis: {e}")
 
 async def scheduled_weekly_decay():
+    if config.BOT_DISABLED:
+        logging.info("Skipping scheduled weekly amnesty because bot is disabled.")
+        return
     logging.info("Starting scheduled weekly amnesty...")
     try:
         chats_ref = db.collection("chats")
@@ -87,6 +98,9 @@ async def scheduled_weekly_decay():
         logging.error(f"Error in scheduled amnesty: {e}")
 
 async def scheduled_lore_evolution():
+    if config.BOT_DISABLED:
+        logging.info("Skipping scheduled lore evolution because bot is disabled.")
+        return
     logging.info("Starting scheduled lore evolution...")
     try:
         chats_ref = db.collection("chats")
@@ -149,6 +163,8 @@ def verify_jwt(x_secret_token: str = Header(None, alias="X-Secret-Token")):
 @app.post("/webhook")
 @limiter.limit("60/minute")
 async def telegram_webhook(request: Request):
+    if config.BOT_DISABLED:
+        return {"status": "skipped", "message": "Bot is disabled"}
     try:
         update_data = await request.json()
         update = types.Update(**update_data)
@@ -217,4 +233,8 @@ async def get_token(request: Request, x_secret_token: str = Header(None, alias="
 
 @app.get("/")
 async def health_check():
-    return {"status": "ok", "service": "BorSnitchBot"}
+    return {
+        "status": "ok", 
+        "service": "BorSnitchBot",
+        "bot_disabled": config.BOT_DISABLED
+    }

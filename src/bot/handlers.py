@@ -15,22 +15,55 @@ from io import BytesIO
 
 router = Router()
 
+@router.message(Command("bot_disable"))
+async def cmd_bot_disable(message: types.Message):
+    from ..utils.game_config import config
+    
+    # Optional: Check if user is admin in the chat
+    member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status not in ["creator", "administrator"]:
+        return
+
+    config.BOT_DISABLED = True
+    logging.warning(f"BOT GLOBALLY DISABLED by {message.from_user.id} in chat {message.chat.id}")
+    await message.answer("🛑 <b>БОТ ПОЛНОСТЬЮ ОТКЛЮЧЕН.</b>\nЯ больше не реагирую ни на какие команды и сообщения.", parse_mode="HTML")
+
+@router.message(Command("bot_enable"))
+async def cmd_bot_enable(message: types.Message):
+    from ..utils.game_config import config
+    
+    member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status not in ["creator", "administrator"]:
+        return
+
+    config.BOT_DISABLED = False
+    logging.warning(f"BOT GLOBALLY ENABLED by {message.from_user.id} in chat {message.chat.id}")
+    await message.answer("✅ <b>БОТ ВКЛЮЧЕН.</b>\nЯ снова слежу за вами.", parse_mode="HTML")
+
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     await message.answer("Я Снитч-бот. Я слежу за вами. 👁️")
     await db.collection("chats").document(str(message.chat.id)).set({"active": True}, merge=True)
 
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     text = await GameService.get_stats_report(message.chat.id)
     await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("rules"))
 async def cmd_rules(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     await message.answer(messages.RULES_TEXT, parse_mode="HTML")
 
 @router.message(Command("agreements"))
 async def cmd_agreements(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     if not config.ENABLE_AGREEMENTS:
         return
     agreements = await get_active_agreements(message.chat.id)
@@ -63,6 +96,8 @@ async def cmd_agreements(message: types.Message):
 
 @router.message(Command("dispute", "disput"))
 async def cmd_dispute(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     if not config.ENABLE_AGREEMENTS:
         return
     args = message.text.split()
@@ -96,6 +131,8 @@ async def cmd_dispute(message: types.Message):
 
 @router.message(Command("all"))
 async def cmd_all(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     logging.info(f"Received /all command in chat {message.chat.id}")
     try:
         users, _ = await get_chat_users(message.chat.id)
@@ -134,6 +171,8 @@ async def cmd_all(message: types.Message):
 
 @router.message(Command("status", "me"))
 async def cmd_status(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     target_user = message.from_user
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
@@ -143,6 +182,8 @@ async def cmd_status(message: types.Message):
 
 @router.message(Command("report"))
 async def cmd_report(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     if not message.reply_to_message:
         await message.answer("❌ <b>Ошибка:</b> Используйте команду ответом на сообщение снитча.", parse_mode="HTML")
         return
@@ -174,6 +215,8 @@ async def cmd_report(message: types.Message):
 
 @router.message(Command("casino"))
 async def cmd_casino(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     text = await GameService.play_casino(message.from_user.id, message.chat.id)
     await message.reply(text, parse_mode="HTML")
 
@@ -184,6 +227,8 @@ async def cmd_remember(message: types.Message):
     Example: /remember Vanya has a new car
     Or reply to a message with /remember
     """
+    if config.BOT_DISABLED:
+        return
     fact_text = ""
     if message.reply_to_message:
         fact_text = message.reply_to_message.text or message.reply_to_message.caption
@@ -216,6 +261,8 @@ async def cmd_remember(message: types.Message):
 
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):
+    if config.BOT_DISABLED:
+        return
     old_emojis = {r.emoji for r in reaction.old_reaction if hasattr(r, 'emoji')}
     new_emojis = {r.emoji for r in reaction.new_reaction if hasattr(r, 'emoji')}
     added = new_emojis - old_emojis
@@ -235,10 +282,14 @@ async def handle_reactions(reaction: MessageReactionUpdated):
 
 @router.edited_message()
 async def handle_edited_messages(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     await update_edited_message(message)
 
 @router.message(F.text | F.sticker | F.voice | F.video_note)
 async def handle_messages(message: types.Message):
+    if config.BOT_DISABLED:
+        return
     override_text = None
     if message.voice or message.video_note:
         try:
