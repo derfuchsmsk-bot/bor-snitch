@@ -51,7 +51,7 @@ class GameConfig:
     ANALYSIS_CUTOFF_HOUR = 4 # Hour to decide if analyzing yesterday or today
 
     # AI Models
-    AI_MODEL_ANALYSIS = "gemini-3-flash-preview"
-    AI_MODEL_MULTIMODAL = "gemini-3-pro-preview"
+    AI_MODEL_ANALYSIS = "gemini-3.8-flash"
+    AI_MODEL_MULTIMODAL = "gemini-3.8-flash"
 
 config = GameConfig()
