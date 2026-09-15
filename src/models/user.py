@@ -13,4 +13,6 @@ class UserStats(BaseModel):
     last_active_date: Optional[datetime] = None
     last_gamble_date: Optional[str] = None
     last_win_date: Optional[str] = None
-    season_id: Optional[str] = None
+    season_id: Optional[str] = "global"
+    is_bot: bool = False
+

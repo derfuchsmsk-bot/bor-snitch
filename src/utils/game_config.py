@@ -4,6 +4,8 @@ from dataclasses import dataclass
 class GameConfig:
     # Global Bot State
     BOT_DISABLED = False
+    ACCOUNTING_EPOCH_DATE = "2026-09-15"
+
 
     # Points
     POINTS_WHINING = 0

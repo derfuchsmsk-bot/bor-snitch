@@ -9,6 +9,8 @@ from ..database import db
 from ..repositories.user_repository import user_repository
 from ..repositories.message_repository import message_repository
 from ..repositories.agreement_repository import agreement_repository
+from ..models.points import PointEvent
+
 
 def get_current_season_id():
     """Returns the current season ID (Global)."""
@@ -207,29 +209,53 @@ async def check_afk_users(chat_id: int):
             
     return offenders
 
-async def apply_weekly_amnesty(chat_id: int):
+async def apply_weekly_amnesty(chat_id: int, week_key: str = None) -> bool:
     """
-    Applies weekly amnesty: Halves the total points of every user in the chat.
+    Applies weekly amnesty: Deducts 50% from points earned in the current week.
+    Idempotent per chat_id and week_key.
     """
-    chat_id = str(chat_id)
-    stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
-    
+    chat_id_str = str(chat_id)
+    if not week_key:
+        week_key = PointEvent.current_week_key()
+        
     current_season = get_current_season_id()
+    amnesty_run_ref = db.collection("chats").document(chat_id_str).collection("amnesty_runs").document(week_key)
     
-    # 1. Fetch all user stats
-    async for doc in stats_ref.stream():
-        data = doc.to_dict()
-        if data.get('season_id') == current_season:
-            current_total = data.get('total_points', 0)
-            new_total = max(0, current_total // 2)
-            new_rank = calculate_rank(new_total)
-            
-            await doc.reference.update({
-                "total_points": new_total,
-                "current_rank": new_rank
-            })
-            logging.info(f"Amnesty applied for user {doc.id}: -{current_total - new_total} points (Total: {current_total}).")
-    
+    # Check if amnesty already ran for this chat and week
+    run_doc = await amnesty_run_ref.get()
+    if run_doc.exists:
+        logging.info(f"Amnesty for chat {chat_id_str} and week {week_key} already applied, skipping.")
+        return False
+
+    weekly_points = await user_repository.get_weekly_points_for_chat(chat_id, week_key)
+    logging.info(f"Weekly points for chat {chat_id_str} (week {week_key}): {weekly_points}")
+
+    for uid_str, weekly_pts in weekly_points.items():
+        if weekly_pts <= 0:
+            continue
+        deduction = weekly_pts // 2
+        if deduction <= 0:
+            continue
+
+        event = PointEvent(
+            event_id=f"amnesty:{chat_id_str}:{uid_str}:{week_key}",
+            chat_id=chat_id_str,
+            user_id=uid_str,
+            points_delta=-deduction,
+            event_type="weekly_amnesty",
+            reason=f"Еженедельная амнистия (-50% от {weekly_pts} очков за неделю {week_key})",
+            season_id=current_season,
+            week_key=week_key
+        )
+        await user_repository.apply_point_event_transactional(chat_id, event)
+        logging.info(f"Amnesty applied for user {uid_str}: -{deduction} points.")
+
+    await amnesty_run_ref.set({
+        "chat_id": chat_id_str,
+        "week_key": week_key,
+        "applied_at": firestore.SERVER_TIMESTAMP,
+        "users_affected": len(weekly_points)
+    })
     return True
 
 async def get_logs_for_time_range(chat_id: int, start_dt: datetime, end_dt: datetime):
@@ -265,41 +291,66 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
     
     daily_ref = db.collection("chats").document(str_chat_id).collection("daily_results").document(date_key)
 
+    if date_key < config.ACCOUNTING_EPOCH_DATE:
+        logging.info(f"Daily analysis date {date_key} is prior to accounting epoch {config.ACCOUNTING_EPOCH_DATE}. Saving record without modifying user stats.")
+        await daily_ref.set(analysis_result)
+        return
+
+
     @firestore.async_transactional
     async def _save_in_transaction(transaction, daily_ref, analysis_result, str_chat_id, date_key, current_season):
         # 1. Read existing daily record
         existing_doc = await daily_ref.get(transaction=transaction)
-        old_offenders_map = {}
+        aggregated_old = {}
         if existing_doc.exists:
             old_data = existing_doc.to_dict()
             for off in old_data.get('offenders', []):
                 uid = str(off.get('user_id'))
-                if uid:
-                    old_offenders_map[uid] = off
+                if not uid:
+                    continue
+                if uid not in aggregated_old:
+                    aggregated_old[uid] = {"points": 0, "infractions_count": 0}
+                aggregated_old[uid]["points"] += off.get('points', 0)
+                aggregated_old[uid]["infractions_count"] += 1
 
-        # 2. Identify all users to update
-        new_offenders = analysis_result.get('offenders', [])
-        new_offenders_map = {str(off.get('user_id')): off for off in new_offenders if off.get('user_id')}
-        
-        all_user_ids = set(old_offenders_map.keys()) | set(new_offenders_map.keys())
+        # 2. Aggregate new offenders by user_id
+        aggregated_new = {}
+        for off in analysis_result.get('offenders', []):
+            uid = str(off.get('user_id'))
+            if not uid:
+                continue
+            if uid not in aggregated_new:
+                aggregated_new[uid] = {
+                    "user_id": uid,
+                    "username": off.get("username", "Unknown"),
+                    "points": 0,
+                    "infractions_count": 0,
+                    "reasons": []
+                }
+            aggregated_new[uid]["points"] += off.get("points", 0)
+            aggregated_new[uid]["infractions_count"] += 1
+            if off.get("reason"):
+                aggregated_new[uid]["reasons"].append(off.get("reason"))
+            if off.get("username"):
+                aggregated_new[uid]["username"] = off.get("username")
+
+        all_user_ids = set(aggregated_old.keys()) | set(aggregated_new.keys())
         
         # 3. Read all user stats
         user_stats_refs = {uid: db.collection("chats").document(str_chat_id).collection("user_stats").document(uid) for uid in all_user_ids}
-        # In Firestore Transactions, we must perform all reads before any writes.
-        # Use asyncio.gather for parallel reads to optimize performance.
         uids = list(user_stats_refs.keys())
         tasks = [user_stats_refs[uid].get(transaction=transaction) for uid in uids]
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks) if tasks else []
         user_stats_docs = dict(zip(uids, results))
 
-        # 4. Calculate updates
+        # 4. Calculate updates & apply writes
         for uid in all_user_ids:
             stats_doc = user_stats_docs[uid]
             ref = user_stats_refs[uid]
             
             current_points = 0
             current_wins = 0
-            username = "Unknown"
+            username = aggregated_new.get(uid, {}).get("username", "Unknown")
             
             if stats_doc.exists:
                 data = stats_doc.to_dict()
@@ -308,20 +359,18 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
                     current_wins = data.get("snitch_count", 0)
                     username = data.get("username", username)
 
-            # Revert old points if user was in previous analysis
-            if uid in old_offenders_map:
-                old_offender = old_offenders_map[uid]
-                current_points = max(0, current_points - old_offender.get('points', 0))
-                current_wins = max(0, current_wins - 1)
+            old_pts = aggregated_old.get(uid, {}).get("points", 0)
+            old_wins = aggregated_old.get(uid, {}).get("infractions_count", 0)
+            new_pts = aggregated_new.get(uid, {}).get("points", 0)
+            new_wins = aggregated_new.get(uid, {}).get("infractions_count", 0)
 
-            # Add new points if user is in current analysis
-            if uid in new_offenders_map:
-                new_offender = new_offenders_map[uid]
-                current_points += new_offender.get('points', 0)
-                current_wins += 1
-                username = new_offender.get('username', username)
+            delta_pts = new_pts - old_pts
+            delta_wins = new_wins - old_wins
 
-            new_rank = calculate_rank(current_points)
+            current_points = max(0, current_points + delta_pts)
+            current_wins = max(0, current_wins + delta_wins)
+
+            new_rank = user_repository.calculate_rank(current_points)
             
             # Prepare update
             transaction.set(ref, {
@@ -332,6 +381,23 @@ async def save_daily_results(chat_id: int, analysis_result: dict):
                 "current_rank": new_rank,
                 "last_win_date": date_key
             }, merge=True)
+
+            # Record in points_ledger if delta_pts != 0
+            if delta_pts != 0:
+                event_id = f"daily:{str_chat_id}:{uid}:{date_key}"
+                ledger_ref = db.collection("chats").document(str_chat_id).collection("points_ledger").document(event_id)
+                reasons_str = "; ".join(aggregated_new.get(uid, {}).get("reasons", [])) or "Daily analysis"
+                transaction.set(ledger_ref, {
+                    "event_id": event_id,
+                    "chat_id": str_chat_id,
+                    "user_id": uid,
+                    "points_delta": delta_pts,
+                    "event_type": "daily_summary",
+                    "reason": reasons_str,
+                    "season_id": current_season,
+                    "week_key": PointEvent.current_week_key(),
+                    "created_at": firestore.SERVER_TIMESTAMP
+                })
 
         # 5. Save the daily result record
         transaction.set(daily_ref, analysis_result)

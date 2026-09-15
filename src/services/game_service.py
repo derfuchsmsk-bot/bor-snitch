@@ -15,31 +15,34 @@ class GameService:
     @staticmethod
     async def play_casino(user_id: int, chat_id: int) -> str:
         """
-        Executes the casino logic for a user.
+        Executes the casino logic for a user atomically.
         Returns the result message text.
         """
         tz_moscow = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
         now = datetime.now(tz_moscow)
         today_str = now.strftime("%Y-%m-%d")
-        
-        stats = await db.get_user_stats(chat_id, user_id)
-        if stats and stats.get('last_gamble_date') == today_str:
-            return messages.CASINO_ALREADY_PLAYED
 
         is_win = random.random() < config.GAMBLE_WIN_CHANCE
-        current_points = stats.get('total_points', 0) if stats else 0
-        
+        deduction = config.GAMBLE_WIN_POINTS
+        penalty = config.GAMBLE_LOSS_POINTS
+
+        res = await db.user_repository.play_casino_transactional(
+            chat_id=chat_id,
+            user_id=user_id,
+            date_key=today_str,
+            is_win=is_win,
+            deduction=deduction,
+            penalty=penalty
+        )
+
+        if res["status"] == "already_played":
+            return messages.CASINO_ALREADY_PLAYED
+
+        new_points = res["new_points"]
         if is_win:
-            deduction = config.GAMBLE_WIN_POINTS
-            new_points = max(0, current_points - deduction)
-            text = messages.CASINO_WIN.format(deduction=deduction, new_points=new_points)
+            return messages.CASINO_WIN.format(deduction=deduction, new_points=new_points)
         else:
-            penalty = config.GAMBLE_LOSS_POINTS
-            new_points = current_points + penalty
-            text = messages.CASINO_LOSS.format(penalty=penalty, new_points=new_points)
-            
-        await db.record_gamble_result(chat_id, user_id, new_points, today_str)
-        return text
+            return messages.CASINO_LOSS.format(penalty=penalty, new_points=new_points)
 
     @staticmethod
     async def get_stats_report(chat_id: int) -> str:

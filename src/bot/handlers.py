@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.types import MessageReactionUpdated
 from aiogram.filters import Command
 from ..services.db import log_message, db, log_reaction, get_active_agreements, get_message, update_edited_message, get_chat_users, dispute_agreement
-from ..services.ai import transcribe_media, validate_fact
+from ..services.ai import transcribe_media, describe_image, validate_fact
 from ..services.fact_service import FactService
 from ..services.chat_service import ChatService
 from ..services.game_service import GameService
@@ -317,7 +317,7 @@ async def handle_edited_messages(message: types.Message):
         return
     await update_edited_message(message)
 
-@router.message(F.text | F.sticker | F.voice | F.video_note)
+@router.message(F.text | F.sticker | F.voice | F.video_note | F.photo | F.document)
 async def handle_messages(message: types.Message):
     if config.BOT_DISABLED:
         return
@@ -337,8 +337,25 @@ async def handle_messages(message: types.Message):
             logging.error(f"Failed to transcribe media: {e}")
             override_text = f"[{'VOICE' if message.voice else 'VIDEO NOTE'}] (Transcription Failed)"
     
-    if message.sticker:
-         override_text = f"[STICKER] {message.sticker.emoji or 'Unknown'} (File ID: {message.sticker.file_unique_id})"
+    elif message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
+        try:
+            file_id = message.photo[-1].file_id if message.photo else message.document.file_id
+            mime_type = "image/jpeg" if message.photo else (message.document.mime_type or "image/jpeg")
+            file_info = await message.bot.get_file(file_id)
+            file_io = BytesIO()
+            await message.bot.download_file(file_info.file_path, file_io)
+            file_bytes = file_io.getvalue()
+            caption = message.caption or ""
+            desc = await describe_image(file_bytes, mime_type=mime_type, caption=caption)
+            override_text = f"[IMAGE/MEME] {desc}"
+            if caption:
+                override_text += f" | Подпись: {caption}"
+        except Exception as e:
+            logging.error(f"Failed to process image: {e}")
+            override_text = f"[IMAGE] (Анализ изображения не удался: {e})"
+
+    elif message.sticker:
+        override_text = f"[STICKER] {message.sticker.emoji or 'Unknown'} (File ID: {message.sticker.file_unique_id})"
 
     try:
         await log_message(message, override_text=override_text)

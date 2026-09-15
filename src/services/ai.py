@@ -18,6 +18,8 @@ from src.utils.prompts import (
 )
 from src.services.lore_service import LoreService
 from src.services.fact_service import FactService
+from src.services.mood_service import MoodService
+from src.services.dossier_service import DossierService
 from src.models.ai import (
     DailyAnalysisResult,
     ReportValidationResult,
@@ -126,11 +128,14 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
         # With response_schema, json.loads is usually sufficient if the SDK handles it, 
         # but currently the Python SDK returns text that is JSON.
         result_dict = json.loads(response.text)
+        if "status" not in result_dict:
+            result_dict["status"] = "accepted" if result_dict.get("valid") else "rejected"
         return ReportValidationResult(**result_dict)
     except Exception as e:
         logging.error(f"Error during report validation: {e}")
         return ReportValidationResult(
-            valid=False, 
+            valid=False,
+            status="technical_error",
             reason=f"AI Error: {str(e)}", 
             thought_process=f"Exception: {e}"
         )
@@ -356,6 +361,36 @@ async def transcribe_media(file_data: bytes, mime_type: str) -> str:
         logging.error(f"Transcription error: {e}")
         return f"[Transcription Failed: {e}]"
 
+async def describe_image(file_data: bytes, mime_type: str = "image/jpeg", caption: str | None = None) -> str:
+    """
+    Analyzes an image, screenshot, or meme using Gemini Multimodal (gemini-3.8-flash).
+    Extracts text, visual context, humor/meme meaning, or potential toxic evidence.
+    """
+    model = GenerativeModel(config.AI_MODEL_MULTIMODAL)
+    
+    caption_context = f"\nПодпись к фото от автора: \"{caption}\"" if caption else ""
+    prompt = f"""
+Ты — наблюдатель за визуальным контентом в чате друзей для Снитч-бота.
+Кратко и содержательно опиши изображение на русском языке (1-3 предложения):
+1. Тип контента: мем, фото из жизни, скриншот переписки, стикер или документ.
+2. Если есть текст на картинке (OCR) — обязательно процитируй его.
+3. Объясни иронию, посыл или контекст происходящего.
+Пиши емко и без канцелярита (например: "Мем с Гарольдом: надпись 'всё под контролем', ирония над горящими дедлайнами." или "Скриншот банковского приложения с балансом 12 рублей.").
+{caption_context}
+"""
+    try:
+        response = await model.generate_content_async(
+            contents=[
+                Part.from_data(data=file_data, mime_type=mime_type),
+                prompt
+            ]
+        )
+        return response.text.strip()
+    except Exception as e:
+        logging.error(f"Image analysis error: {e}")
+        return f"[Image Analysis Failed: {e}]"
+
+
 async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummaryResult:
     """
     Summarizes day's events and stores in memories collection.
@@ -455,6 +490,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
             continue
         context_str += f"- {name}: {txt}\n"
         
+    mood = MoodService.get_current_mood()
+    
     prompt = f"""
 КОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:
 {context_str}
@@ -462,7 +499,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 АКТУАЛЬНОЕ СООБЩЕНИЕ, НА КОТОРОЕ НУЖНО ОТВЕТИТЬ (от пользователя {current_username}):
 "{current_text}"
 
-ИНСТРУКЦИЯ: Напиши ОДНО короткое, едкое и живое предложение, которое будет НАТИВНЫМ продолжением этого диалога.
+ИНСТРУКЦИЯ: Напиши 1-2 коротких, едких и живых предложения, которые станут НАТИВНЫМ продолжением этого диалога.
+Твое текущее настроение: {mood.title}.
 Избегай упоминаний лора (штора, плитка, пуэр, вахта), если только они не упомянуты в самом сообщении.
 Не используй клише про "обучение", "волю" или "репорты". Отвечай как человек человеку.
 """
@@ -473,7 +511,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         lore_json = json.dumps(lore_core, ensure_ascii=False, indent=2)
         
         facts_str = await FactService.get_facts_as_str(chat_id) if chat_id else ""
-        context_str = lore_full.get('current_context', "")
+        context_str_lore = lore_full.get('current_context', "")
+        social_context = await DossierService.get_social_graph_context(chat_id) if chat_id else ""
         
         @retry(
             stop=stop_after_attempt(3),
@@ -483,7 +522,16 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         )
         async def _generate_with_retry():
             return await model.generate_content_async(
-                contents=[get_cynical_comment_prompt(lore_json, facts_str, context_str), prompt]
+                contents=[
+                    get_cynical_comment_prompt(
+                        lore_json=lore_json, 
+                        verified_facts=facts_str, 
+                        current_context=context_str_lore,
+                        mood_instruction=mood.tone_instruction,
+                        social_context=social_context
+                    ), 
+                    prompt
+                ]
             )
 
         response = await _generate_with_retry()

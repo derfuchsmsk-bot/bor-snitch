@@ -34,8 +34,9 @@ class DailyAnalysisResult(BaseModel):
     updated_agreements: List[UpdatedAgreement] = Field(default_factory=list, description="Список обновленных договоренностей")
 
 class ReportValidationResult(BaseModel):
-    thought_process: str = Field(description="Размышления о контексте и справедливости жалобы")
+    thought_process: str = Field("", description="Размышления о контексте и справедливости жалобы")
     valid: bool = Field(description="Является ли жалоба обоснованной")
+    status: str = Field("rejected", description="accepted | rejected | technical_error | insufficient_data")
     category: Optional[str] = Field(None, description="Категория: Toxicity | Snitching")
     points: int = Field(0, description="Очки за нарушение (если есть)")
     reason: str = Field(description="Вердикт и причина решения")

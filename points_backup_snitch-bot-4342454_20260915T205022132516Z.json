@@ -1,0 +1,87 @@
+{
+  "project": "snitch-bot-4342454",
+  "users": [
+    {
+      "path": "chats/-1003893798466/user_stats/200666412",
+      "fields": {
+        "total_points": 39,
+        "current_rank": "Порядочный 😐",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/213555791",
+      "fields": {
+        "total_points": 173,
+        "current_rank": "Шнырь 🧹",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/383998331",
+      "fields": {
+        "total_points": 561,
+        "current_rank": "Обиженный 🚽",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/460322254",
+      "fields": {
+        "total_points": 372,
+        "current_rank": "Козёл 🐐",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/615090692",
+      "fields": {
+        "total_points": 21,
+        "current_rank": "Порядочный 😐",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/8518045615",
+      "fields": {},
+      "missing_fields": [
+        "total_points",
+        "current_rank",
+        "season_id"
+      ]
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/974975544",
+      "fields": {
+        "total_points": 323,
+        "current_rank": "Козёл 🐐",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/-1003893798466/user_stats/991728230",
+      "fields": {
+        "total_points": 303,
+        "current_rank": "Козёл 🐐",
+        "season_id": "global"
+      },
+      "missing_fields": []
+    },
+    {
+      "path": "chats/200666412/user_stats/200666412",
+      "fields": {
+        "total_points": 0,
+        "current_rank": "Порядочный 😐"
+      },
+      "missing_fields": [
+        "season_id"
+      ]
+    }
+  ]
+}

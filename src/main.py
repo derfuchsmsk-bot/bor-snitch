@@ -1,6 +1,8 @@
 import jwt
 import time
 import logging
+from google.cloud import firestore
+
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Request, Header, HTTPException, Depends
 from aiogram import Bot, Dispatcher, types
@@ -176,16 +178,40 @@ def verify_jwt(x_secret_token: str = Header(None, alias="X-Secret-Token")):
 @app.post("/webhook")
 @limiter.limit("60/minute")
 async def telegram_webhook(request: Request):
-    if config.BOT_DISABLED:
-        return {"status": "skipped", "message": "Bot is disabled"}
+    # Verify Telegram Bot API secret token if configured
+    secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if settings.SECRET_TOKEN and secret_token:
+        if secret_token != settings.SECRET_TOKEN:
+            logging.warning("Rejected webhook request with invalid secret token.")
+            raise HTTPException(status_code=403, detail="Invalid secret token")
+
     try:
         update_data = await request.json()
+        update_id = update_data.get("update_id")
+
+        # Idempotent deduplication for Telegram updates
+        if update_id is not None:
+            update_ref = db.collection("processed_updates").document(str(update_id))
+            try:
+                await update_ref.create({
+                    "update_id": update_id,
+                    "processed_at": firestore.SERVER_TIMESTAMP
+                })
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "alreadyexists" in type(e).__name__.lower() or "already exists" in err_msg:
+                    logging.info(f"Duplicate update_id {update_id} received, returning 200 without reprocessing.")
+                    return {"status": "ok", "message": "duplicate"}
+                logging.warning(f"Could not record update_id {update_id} in processed_updates: {e}")
+
         update = types.Update(**update_data)
         await dp.feed_update(bot, update)
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Webhook error: {e}")
-        return {"status": "error", "message": str(e)}
+        logging.error(f"Webhook processing error: {e}")
+        raise HTTPException(status_code=500, detail="Internal processing error")
 
 @app.post("/analyze_daily")
 async def analyze_daily(request: Request, auth=Depends(verify_jwt)):
