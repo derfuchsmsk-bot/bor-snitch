@@ -3,7 +3,7 @@ from dataclasses import dataclass
 @dataclass
 class GameConfig:
     # Global Bot State
-    BOT_DISABLED = True
+    BOT_DISABLED = False
 
     # Points
     POINTS_WHINING = 0
