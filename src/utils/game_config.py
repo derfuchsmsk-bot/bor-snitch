@@ -49,6 +49,10 @@ DEFAULT_CONFIG_VALUES = {
     "VOICE_DIGEST_PITCH": -1.5,
     "VOICE_DIGEST_SPEED": 1.05,
 
+    # Live Voice Chat (Kizaru persona in group calls)
+    "VOICE_CHAT_ENABLED": True,
+    "VOICE_CHAT_INACTIVITY_TIMEOUT_SECONDS": 60,
+
     # Ranks (serialized as lists, second value None = inf)
     "RANK_NORMAL": [0, 49],
     "RANK_SHNYR": [50, 249],

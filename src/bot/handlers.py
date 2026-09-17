@@ -282,6 +282,51 @@ async def cmd_voice_digest(message: types.Message):
         except Exception:
             pass
 
+@router.message(Command("call", "voice_join"))
+async def cmd_voice_call_join(message: types.Message):
+    """
+    Connects the bot to the Telegram group voice chat as Kizaru.
+    Auto-disconnects after 60 seconds of inactivity.
+    """
+    if config.BOT_DISABLED:
+        return
+
+    from ..services.voice_chat_service import VoiceChatService
+
+    status_msg = await message.reply("🎙️ <i>Снитч-Бот подрубается к войсу...</i>", parse_mode="HTML")
+    try:
+        greeting = await VoiceChatService.join_voice_chat(message.chat.id)
+        await status_msg.edit_text(
+            f"🔊 <b>Снитч-Бот залетел в голосовой чат!</b>\n"
+            f"<i>«{escape(greeting)}»</i>\n\n"
+            f"⏱️ <i>Автоматически выйдет через 60 секунд молчания. Принудительный выход: /voice_leave</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logging.error(f"Failed to join voice chat: {e}")
+        await status_msg.edit_text(
+            f"⚠️ <i>Не удалось подключиться к войсу: {escape(str(e))}. Убедитесь, что голосовой чат запущен в группе!</i>",
+            parse_mode="HTML"
+        )
+
+@router.message(Command("voice_leave", "leave_call", "leave"))
+async def cmd_voice_call_leave(message: types.Message):
+    """
+    Disconnects the bot from the group voice chat immediately.
+    """
+    if config.BOT_DISABLED:
+        return
+
+    from ..services.voice_chat_service import VoiceChatService
+    try:
+        phrase = await VoiceChatService.leave_voice_chat(message.chat.id, reason="manual")
+        text = "👋 <b>Снитч-Бот отключился от голосового чата.</b>"
+        if phrase:
+            text += f"\n<i>«{escape(phrase)}»</i>"
+        await message.reply(text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Failed to leave voice chat: {e}")
+
 @router.message(Command("remember"))
 async def cmd_remember(message: types.Message):
     """

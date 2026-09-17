@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     MAIN_CHAT_ID: int = -1003893798466
     ADMIN_PASSWORD: str = ""
     ELEVENLABS_API_KEY: str = ""
+    TELEGRAM_API_ID: int | None = None
+    TELEGRAM_API_HASH: str | None = None
 
     @property
     def effective_admin_password(self) -> str:

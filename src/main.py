@@ -204,6 +204,8 @@ async def sync_bot_commands():
                 types.BotCommand(command="casino", description="Испытать удачу"),
                 types.BotCommand(command="all", description="Позвать всех"),
                 types.BotCommand(command="digest", description="Голосовая хроника (Voice)"),
+                types.BotCommand(command="call", description="Зайти в войс-чат (Кизару)"),
+                types.BotCommand(command="voice_leave", description="Выйти из войс-чата"),
                 types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
                 types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
             ]

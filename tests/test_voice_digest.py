@@ -57,7 +57,7 @@ async def test_voice_digest_creation_and_send():
     mock_bot.send_voice = AsyncMock()
 
     with patch("src.services.voice_digest_service.GenerativeModel") as mock_model_cls, \
-         patch.object(TTSService, "synthesize_voice_ogg", new_callable=AsyncMock) as mock_tts, \
+         patch.object(TTSService, "synthesize_speech", new_callable=AsyncMock) as mock_tts, \
          patch("src.services.voice_digest_service.message_repository.get_logs_for_time_range", new_callable=AsyncMock) as mock_logs, \
          patch("src.services.voice_digest_service.agreement_repository.get_active_agreements", new_callable=AsyncMock) as mock_ag, \
          patch("src.services.voice_digest_service.user_repository.get_points_ledger", new_callable=AsyncMock) as mock_ledger, \
@@ -71,7 +71,7 @@ async def test_voice_digest_creation_and_send():
         mock_instance = MagicMock()
         mock_instance.generate_content_async = AsyncMock(return_value=mock_gemini_resp)
         mock_model_cls.return_value = mock_instance
-        mock_tts.return_value = b"FAKE_OGG_BYTES"
+        mock_tts.return_value = (b"FAKE_OGG_BYTES", "mp3")
 
         result = await VoiceDigestService.create_and_send_voice_digest(
             chat_id=123456,
