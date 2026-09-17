@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone, timedelta
-from vertexai.generative_models import GenerativeModel
+from vertexai.generative_models import GenerativeModel, HarmCategory, HarmBlockThreshold
 from aiogram.types import BufferedInputFile
 
 from src.utils.game_config import config
@@ -13,6 +13,14 @@ from src.repositories.agreement_repository import agreement_repository
 from src.repositories.user_repository import user_repository
 
 logger = logging.getLogger(__name__)
+
+# Permissive safety settings so creative/satirical crime chronicle scripts are never cut off by Google filters
+SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
 
 class VoiceDigestService:
     @classmethod
@@ -79,11 +87,19 @@ class VoiceDigestService:
                 contents=[prompt],
                 generation_config={
                     "temperature": 0.8,
-                    "max_output_tokens": 1000
-                }
+                    "max_output_tokens": 2048
+                },
+                safety_settings=SAFETY_SETTINGS
             )
-            raw_text = response.text.strip()
-            # Clean possible markdown or quotes
+            raw_text = ""
+            if response.candidates:
+                candidate = response.candidates[0]
+                logger.info(f"Gemini voice candidate finish reason: {candidate.finish_reason}")
+                if candidate.content and candidate.content.parts:
+                    raw_text = "".join([part.text for part in candidate.content.parts if hasattr(part, "text")]).strip()
+            if not raw_text and response.text:
+                raw_text = response.text.strip()
+
             cleaned_script = TTSService.clean_text_for_speech(raw_text)
             logger.info(f"Generated voice digest script ({len(cleaned_script)} chars) for chat {chat_id}")
             return cleaned_script
@@ -119,8 +135,8 @@ class VoiceDigestService:
         if send_to_telegram and bot:
             is_day = "дневн" in edition_type.lower() or "14:00" in edition_type
             title = "🎙️ ОБЕДЕННАЯ ХРОНИКА САЙОНАРЫ (14:00)" if is_day else "📻 ВЕЧЕРНИЙ ПРИГОВОР САЙОНАРЫ (22:00)"
-            snippet = script[:160] + "..." if len(script) > 160 else script
-            caption = f"<b>{title}</b>\n\n<i>{escape(snippet)}</i>"
+            caption_text = script if len(script) <= 900 else script[:850] + "..."
+            caption = f"<b>{title}</b>\n\n<i>{escape(caption_text)}</i>"
 
             voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.ogg")
             try:
