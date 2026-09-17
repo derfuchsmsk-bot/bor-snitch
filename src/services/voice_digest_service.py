@@ -100,6 +100,18 @@ class VoiceDigestService:
             if not raw_text and response.text:
                 raw_text = response.text.strip()
 
+            # Filter out any internal thought/checklist prefixes if generated
+            lines = raw_text.split('\n')
+            filtered_lines = []
+            for l in lines:
+                l_strip = l.strip()
+                if any(x in l_strip for x in ["Pronunciation check", "check for TTS", "brackets (", "NONE -", "links: NONE", "NONE:"]):
+                    continue
+                if l_strip.startswith("«") and "NONE" in l_strip:
+                    continue
+                filtered_lines.append(l)
+            raw_text = "\n".join(filtered_lines).strip()
+
             cleaned_script = TTSService.clean_text_for_speech(raw_text)
             logger.info(f"Generated voice digest script ({len(cleaned_script)} chars) for chat {chat_id}")
             return cleaned_script
