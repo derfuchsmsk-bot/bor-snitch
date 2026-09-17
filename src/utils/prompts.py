@@ -37,6 +37,21 @@ def get_fact_validation_prompt() -> str:
 def get_feedback_analysis_prompt() -> str:
     return PromptService.format_feedback_analysis_prompt()
 
+def get_voice_digest_prompt(
+    edition_type: str,
+    lore_json: str = "{}",
+    active_agreements: str = "",
+    offenders_summary: str = "",
+    current_context: str = ""
+) -> str:
+    return PromptService.format_voice_digest_prompt(
+        edition_type=edition_type,
+        lore_json=lore_json,
+        active_agreements=active_agreements,
+        offenders_summary=offenders_summary,
+        current_context=current_context
+    )
+
 
 class _DynamicPromptProxy:
     """A proxy string that fetches the latest prompt from PromptService dynamically."""
@@ -60,3 +75,4 @@ class _DynamicPromptProxy:
 MEMORY_SUMMARIZATION_PROMPT = _DynamicPromptProxy("memory_summarization_prompt")
 FACT_VALIDATION_PROMPT = _DynamicPromptProxy("fact_validation_prompt")
 FEEDBACK_ANALYSIS_PROMPT = _DynamicPromptProxy("feedback_analysis_prompt")
+VOICE_DIGEST_PROMPT = _DynamicPromptProxy("voice_digest_prompt")

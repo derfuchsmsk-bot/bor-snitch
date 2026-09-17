@@ -36,6 +36,14 @@ DEFAULT_CONFIG_VALUES = {
     "REACTION_COOLDOWN_SECONDS": 120,
     "REACTION_ALLOWED_EMOJIS": ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"],
 
+    # Voice Digest (Daily audio reports via Google Cloud TTS)
+    "VOICE_DIGEST_ENABLED": True,
+    "VOICE_DIGEST_TIME_1": "14:00",
+    "VOICE_DIGEST_TIME_2": "22:00",
+    "VOICE_DIGEST_VOICE": "ru-RU-Wavenet-D",
+    "VOICE_DIGEST_PITCH": -1.5,
+    "VOICE_DIGEST_SPEED": 1.05,
+
     # Ranks (serialized as lists, second value None = inf)
     "RANK_NORMAL": [0, 49],
     "RANK_SHNYR": [50, 249],

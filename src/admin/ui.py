@@ -352,6 +352,43 @@ def get_admin_html() -> str:
             </div>
           </div>
 
+          <!-- Card: Voice Digest (Криминальная хроника) -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4">
+            <h3 class="text-sm font-bold text-rose-400 uppercase tracking-wider flex items-center gap-2">
+              <span class="text-base">🎙️</span>
+              Голосовая Сводка (Хроника)
+            </h3>
+
+            <div>
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div>
+                  <div class="text-sm font-semibold text-white">Включить голосовые сводки</div>
+                  <div class="text-xs text-slate-400">2 раза в день бот присылает войс с итогами</div>
+                </div>
+                <input type="checkbox" id="cfg-VOICE_DIGEST_ENABLED" class="w-5 h-5 accent-rose-500 rounded cursor-pointer">
+              </label>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Выпуск 1 (МСК)</label>
+                <input type="text" id="cfg-VOICE_DIGEST_TIME_1" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="14:00">
+                <div class="text-[10px] text-slate-500 mt-1">Обеденная сводка</div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Выпуск 2 (МСК)</label>
+                <input type="text" id="cfg-VOICE_DIGEST_TIME_2" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="22:00">
+                <div class="text-[10px] text-slate-500 mt-1">Вечерний приговор</div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Голос (Google Cloud TTS)</label>
+              <input type="text" id="cfg-VOICE_DIGEST_VOICE" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="ru-RU-Wavenet-D">
+              <div class="text-[10px] text-slate-500 mt-1">ru-RU-Wavenet-D, ru-RU-Wavenet-B</div>
+            </div>
+          </div>
+
           <!-- Card: Context & Agreements -->
           <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 md:col-span-2 lg:col-span-3">
             <h3 class="text-sm font-bold text-sky-400 uppercase tracking-wider flex items-center gap-2">
@@ -611,7 +648,7 @@ def get_admin_html() -> str:
           <p class="text-xs text-slate-400">Ручной запуск регулярных заданий и служебных алгоритмов</p>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           <!-- Action: Daily Analysis -->
           <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
             <div>
@@ -634,8 +671,27 @@ def get_admin_html() -> str:
             </div>
             <button onclick="runWeeklyAgreementsScan(true)" id="btn-action-agreements-scan"
                     class="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-sky-900/30">
-              <span>Просканировать за неделю</span>
+              <span>Просканировать</span>
             </button>
+          </div>
+
+          <!-- Action: Voice Digest -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div class="text-2xl mb-2">🎙️</div>
+              <h3 class="text-sm font-bold text-white">Голосовая хроника</h3>
+              <p class="text-xs text-slate-400 mt-1">Озвучивает сводку событий чата через Google Cloud TTS и шлет войс в чат.</p>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="runVoiceDigestAction('Дневной выпуск (14:00)')" id="btn-action-voice-day"
+                      class="flex-1 py-2 px-1 bg-rose-600/80 hover:bg-rose-500 text-white text-[11px] font-semibold rounded-xl transition shadow-lg text-center">
+                14:00
+              </button>
+              <button onclick="runVoiceDigestAction('Вечерний выпуск (22:00)')" id="btn-action-voice-eve"
+                      class="flex-1 py-2 px-1 bg-purple-600/80 hover:bg-purple-500 text-white text-[11px] font-semibold rounded-xl transition shadow-lg text-center">
+                22:00
+              </button>
+            </div>
           </div>
 
           <!-- Action: Weekly Amnesty -->
@@ -1625,6 +1681,22 @@ def get_admin_html() -> str:
       } finally {
         if (btn1) { btn1.disabled = false; btn1.textContent = '🔍 Просканировать за неделю'; }
         if (btn2) { btn2.disabled = false; btn2.textContent = 'Просканировать за неделю'; }
+      }
+    }
+
+    async function runVoiceDigestAction(edition) {
+      if (!confirm(`Сгенерировать и отправить ${edition} голосовой сводки в чат ${state.currentChatId}?`)) return;
+      appendConsole(`Запуск генерации голосовой сводки (${edition}) для чата ${state.currentChatId}...`);
+      try {
+        const res = await apiRequest('/api/admin/actions/voice_digest', {
+          method: 'POST',
+          body: JSON.stringify({ chat_id: state.currentChatId, edition_type: edition, send_telegram: true })
+        });
+        appendConsole(`Голосовая сводка успешно озвучена и отправлена в чат!\\nСценарий: ${res.result?.script}\\nРазмер аудио: ${res.result?.audio_bytes_length} байт`);
+        showToast('Голосовая сводка отправлена в чат!');
+      } catch (err) {
+        appendConsole(`ОШИБКА генерации голосовой сводки: ${err.message}`);
+        showToast('Ошибка генерации войса: ' + err.message, 'error');
       }
     }
 

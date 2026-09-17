@@ -168,6 +168,47 @@ DEFAULT_FEEDBACK_ANALYSIS_TEMPLATE = """Анализируй реакцию ча
 
 Твоя задача — понять, был ли ты справедлив и смешон, или ты "передушил" и нужно скорректировать поведение."""
 
+DEFAULT_VOICE_DIGEST_TEMPLATE = """Ты — ведущий культовой криминальной хроники и циничный цифровой судья Снитч-бота.
+Твоя задача — написать текст для ГОЛОСОВОГО ВЫПУСКА (Voice Digest), который будет озвучен диктором через Text-to-Speech и отправлен в Telegram голосовым сообщением.
+
+<edition>
+{edition_type} (Дневной выпуск в 14:00 или Вечерний выпуск в 22:00)
+</edition>
+
+<lore_core>
+{lore_json}
+</lore_core>
+
+<active_agreements>
+{active_agreements}
+</active_agreements>
+
+<offenders_summary>
+{offenders_summary}
+</offenders_summary>
+
+<chat_context>
+{current_context}
+</chat_context>
+
+<instructions>
+1. ФОРМАТ И ХРОНОМЕТРАЖ:
+   - Объем текста: 60-100 слов (ровно на 30-45 секунд звучания).
+   - Пиши живым русским языком, предназначенным ДЛЯ ЧТЕНИЯ ВСЛУХ.
+   - НЕ используй смайлики, эмодзи, списки или форматирование Markdown (диктор их не прочитает).
+   - Никаких скобок, сносок или ссылок. Только чистый русский текст.
+
+2. СТИЛЬ И ТОНАЛЬНОСТЬ:
+   - Ироничная криминальная хроника в духе НТВ или нуарного детектива.
+   - Сухой, уверенный, слегка язвительный тон следователя по особо важным делам.
+   - Если это дневной выпуск: пройдись по утренним событиям, лени, духоте или свежим обещаниям.
+   - Если это вечерний выпуск: огласи Снитча дня, главные грехи и напомни про договоренности.
+
+3. ПРИВЕТСТВИЕ И ФИНАЛ:
+   - Начни с фирменного вступления: "В эфире выпуск криминальной хроники Сайонары..." или "Добрый день, граждане подсудимые..."
+   - Заверши хлестким панчлайном: "Следствие продолжается. Архив помнит всё." или "Не попадайтесь."
+</instructions>"""
+
 PROMPT_METADATA = {
     "system_prompt": {
         "name": "Системный промпт (Судья дня)",
@@ -219,6 +260,18 @@ PROMPT_METADATA = {
         "description": "Промпт для самоанализа реакции участников чата на вердикты бота.",
         "placeholders": [],
         "default": DEFAULT_FEEDBACK_ANALYSIS_TEMPLATE.strip()
+    },
+    "voice_digest_prompt": {
+        "name": "Голосовая сводка (Криминальная хроника)",
+        "description": "Промпт для генерации сценария ежедневного аудио-выпуска (14:00 и 22:00).",
+        "placeholders": [
+            "edition_type",
+            "lore_json",
+            "active_agreements",
+            "offenders_summary",
+            "current_context"
+        ],
+        "default": DEFAULT_VOICE_DIGEST_TEMPLATE.strip()
     }
 }
 
@@ -446,3 +499,22 @@ class PromptService:
     @classmethod
     def format_feedback_analysis_prompt(cls) -> str:
         return cls.get_template("feedback_analysis_prompt")
+
+    @classmethod
+    def format_voice_digest_prompt(
+        cls,
+        edition_type: str,
+        lore_json: str = "{}",
+        active_agreements: str = "",
+        offenders_summary: str = "",
+        current_context: str = ""
+    ) -> str:
+        template = cls.get_template("voice_digest_prompt")
+        values = {
+            "edition_type": edition_type,
+            "lore_json": lore_json,
+            "active_agreements": active_agreements,
+            "offenders_summary": offenders_summary,
+            "current_context": current_context
+        }
+        return safe_substitute(template, values)

@@ -123,6 +123,73 @@ async def scheduled_lore_evolution():
     except Exception as e:
         logging.error(f"Error in scheduled lore evolution: {e}")
 
+async def scheduled_voice_digest(edition_type: str):
+    if config.BOT_DISABLED or not getattr(config, "VOICE_DIGEST_ENABLED", True):
+        logging.info("Skipping voice digest because bot or feature is disabled.")
+        return
+    logging.info(f"Starting scheduled voice digest ({edition_type})...")
+    from src.services.voice_digest_service import VoiceDigestService
+    try:
+        chats_ref = db.collection("chats")
+        async for chat_doc in chats_ref.stream():
+            chat_data = chat_doc.to_dict()
+            if not chat_data.get("active"):
+                continue
+            chat_id = chat_doc.id
+            try:
+                await VoiceDigestService.create_and_send_voice_digest(
+                    chat_id=int(chat_id),
+                    edition_type=edition_type,
+                    bot=bot,
+                    send_to_telegram=True
+                )
+            except Exception as e:
+                logging.error(f"Failed voice digest for chat {chat_id}: {e}")
+    except Exception as e:
+        logging.error(f"Error in scheduled voice digest: {e}")
+
+def sync_voice_digest_jobs():
+    """Dynamically schedules or removes daily voice digest cron jobs based on GameConfig."""
+    try:
+        if not getattr(config, "VOICE_DIGEST_ENABLED", True) or config.BOT_DISABLED:
+            for job_id in ["voice_digest_1", "voice_digest_2"]:
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+            logging.info("Voice digest jobs unscheduled.")
+            return
+
+        # Parse Time 1 (default 14:00)
+        t1 = getattr(config, "VOICE_DIGEST_TIME_1", "14:00")
+        h1, m1 = [int(x) for x in t1.split(":")[:2]]
+        utc_h1 = (h1 - config.TIMEZONE_OFFSET) % 24
+
+        # Parse Time 2 (default 22:00)
+        t2 = getattr(config, "VOICE_DIGEST_TIME_2", "22:00")
+        h2, m2 = [int(x) for x in t2.split(":")[:2]]
+        utc_h2 = (h2 - config.TIMEZONE_OFFSET) % 24
+
+        scheduler.add_job(
+            scheduled_voice_digest,
+            'cron',
+            hour=utc_h1,
+            minute=m1,
+            args=["Дневной выпуск (14:00)"],
+            id="voice_digest_1",
+            replace_existing=True
+        )
+        scheduler.add_job(
+            scheduled_voice_digest,
+            'cron',
+            hour=utc_h2,
+            minute=m2,
+            args=["Вечерний выпуск (22:00)"],
+            id="voice_digest_2",
+            replace_existing=True
+        )
+        logging.info(f"Scheduled voice digests: {t1} MSK (UTC {utc_h1:02d}:{m1:02d}) & {t2} MSK (UTC {utc_h2:02d}:{m2:02d})")
+    except Exception as e:
+        logging.error(f"Failed to sync voice digest jobs: {e}")
+
 async def sync_bot_commands():
     """Dynamically synchronizes Telegram bot menu commands based on current GameConfig."""
     try:
@@ -156,6 +223,9 @@ async def on_startup():
 
     # Synchronize bot commands
     await sync_bot_commands()
+
+    # Synchronize voice digest jobs
+    sync_voice_digest_jobs()
     
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
     scheduler.add_job(scheduled_lore_evolution, 'cron', day_of_week='mon', hour=0, minute=30)
@@ -269,6 +339,30 @@ async def evolve_lore_endpoint(request: Request, auth=Depends(verify_jwt)):
         logging.error(f"Lore evolution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
+@app.post("/voice_digest")
+async def voice_digest_endpoint(request: Request, auth=Depends(verify_jwt)):
+    """
+    Эндпоинт для запуска генерации голосовой сводки из Google Cloud Scheduler или вручную.
+    """
+    data = await request.json()
+    chat_id = data.get("chat_id")
+    edition = data.get("edition") or "Дневной выпуск (14:00)"
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Missing chat_id")
+
+    from src.services.voice_digest_service import VoiceDigestService
+    try:
+        result = await VoiceDigestService.create_and_send_voice_digest(
+            chat_id=int(chat_id),
+            edition_type=edition,
+            bot=bot,
+            send_to_telegram=True
+        )
+        return result
+    except Exception as e:
+        logging.error(f"Voice digest error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/token")
 @limiter.limit("5/minute")
 async def get_token(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):

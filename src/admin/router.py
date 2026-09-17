@@ -61,6 +61,12 @@ class ConfigUpdateRequest(BaseModel):
     REACTION_CHANCE: Optional[float] = None
     REACTION_COOLDOWN_SECONDS: Optional[int] = None
     REACTION_ALLOWED_EMOJIS: Optional[List[str]] = None
+    VOICE_DIGEST_ENABLED: Optional[bool] = None
+    VOICE_DIGEST_TIME_1: Optional[str] = None
+    VOICE_DIGEST_TIME_2: Optional[str] = None
+    VOICE_DIGEST_VOICE: Optional[str] = None
+    VOICE_DIGEST_PITCH: Optional[float] = None
+    VOICE_DIGEST_SPEED: Optional[float] = None
     RANK_NORMAL: Optional[List[Optional[int]]] = None
     RANK_SHNYR: Optional[List[Optional[int]]] = None
     RANK_GOAT: Optional[List[Optional[int]]] = None
@@ -106,6 +112,11 @@ class CheckAgreementsActionRequest(BaseModel):
     chat_id: str
     lookback_days: Optional[int] = 7
     send_telegram: Optional[bool] = False
+
+class VoiceDigestActionRequest(BaseModel):
+    chat_id: str
+    edition_type: Optional[str] = "Дневной выпуск (14:00)"
+    send_telegram: Optional[bool] = True
 
 
 # --- Auth Endpoints ---
@@ -161,6 +172,12 @@ async def update_config(body: ConfigUpdateRequest, admin=Depends(get_current_adm
             await sync_bot_commands()
         except Exception as e:
             logger.debug(f"Could not sync bot commands: {e}")
+    if any(k.startswith("VOICE_DIGEST_") for k in updates) or "BOT_DISABLED" in updates:
+        try:
+            from src.main import sync_voice_digest_jobs
+            sync_voice_digest_jobs()
+        except Exception as e:
+            logger.debug(f"Could not sync voice digest jobs: {e}")
     return {
         "status": "updated",
         "config": saved_config
@@ -564,4 +581,21 @@ async def action_lore_evolution(body: ActionChatRequest, admin=Depends(get_curre
         return {"status": "evolution_completed", "chat_id": body.chat_id}
     except Exception as e:
         logger.error(f"Lore evolution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/admin/actions/voice_digest")
+async def action_voice_digest(body: VoiceDigestActionRequest, admin=Depends(get_current_admin)):
+    from src.main import bot
+    from src.services.voice_digest_service import VoiceDigestService
+    try:
+        res = await VoiceDigestService.create_and_send_voice_digest(
+            chat_id=int(body.chat_id),
+            edition_type=body.edition_type or "Дневной выпуск (14:00)",
+            bot=bot,
+            send_to_telegram=bool(body.send_telegram)
+        )
+        return {"status": "success", "result": res}
+    except Exception as e:
+        logger.error(f"Voice digest generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
