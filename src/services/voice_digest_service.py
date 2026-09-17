@@ -41,16 +41,19 @@ class VoiceDigestService:
         # Summarize logs
         logs_summary = ""
         if logs:
-            sample_logs = logs[-60:] if len(logs) > 60 else logs
+            sample_logs = logs[-200:] if len(logs) > 200 else logs
             log_lines = []
             for m in sample_logs:
-                u = m.get("username") or "Кто-то"
+                u = m.get("username") or m.get("full_name") or "Кто-то"
                 txt = m.get("text", "")
+                ts = m.get("timestamp")
+                time_str = ts.strftime("%H:%M") if hasattr(ts, "strftime") else ""
+                time_prefix = f"[{time_str}] " if time_str else ""
                 if txt:
-                    log_lines.append(f"{u}: {txt}")
+                    log_lines.append(f"{time_prefix}{u}: {txt}")
             logs_summary = "\n".join(log_lines)
         else:
-            logs_summary = "В чате за последнее время было подозрительно тихо."
+            logs_summary = "В чате за последнее время было подозрительно тихо, никто не писал."
 
         # Fetch recent offenders from ledger
         recent_ledger = await user_repository.get_points_ledger(chat_id, limit=10)
