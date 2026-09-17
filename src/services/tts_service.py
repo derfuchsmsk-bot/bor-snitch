@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 class TTSService:
     _google_client = None
+    _unsupported_voices = set()
 
     @classmethod
     def _get_google_client(cls):
@@ -45,6 +46,9 @@ class TTSService:
             raise ValueError("ELEVENLABS_API_KEY is not configured")
 
         v_id = voice_id or getattr(config, "ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
+        if v_id in cls._unsupported_voices:
+            v_id = "pNInz6obpgDQGcFmaJgB"
+
         model = getattr(config, "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
         stability = getattr(config, "ELEVENLABS_STABILITY", 0.45)
         similarity = getattr(config, "ELEVENLABS_SIMILARITY_BOOST", 0.85)
@@ -68,7 +72,8 @@ class TTSService:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 402 and v_id != "pNInz6obpgDQGcFmaJgB":
-                logger.warning(f"Voice {v_id} requires paid ElevenLabs plan (HTTP 402). Retrying with standard ElevenLabs Adam voice...")
+                cls._unsupported_voices.add(v_id)
+                logger.warning(f"Voice {v_id} requires paid ElevenLabs plan (HTTP 402). Cached as unsupported, retrying with standard ElevenLabs Adam voice...")
                 fallback_url = "https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB?output_format=mp3_44100_128"
                 resp = await client.post(fallback_url, headers=headers, json=payload)
 

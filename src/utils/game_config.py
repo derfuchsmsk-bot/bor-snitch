@@ -41,7 +41,7 @@ DEFAULT_CONFIG_VALUES = {
     "VOICE_DIGEST_TIME_1": "14:00",
     "VOICE_DIGEST_TIME_2": "22:00",
     "TTS_PROVIDER": "elevenlabs",
-    "ELEVENLABS_VOICE_ID": "6A9D8WSMm4rFsg2DWFeE", # Egor Gadzhiyev (fallback to Adam if free plan)
+    "ELEVENLABS_VOICE_ID": "pNInz6obpgDQGcFmaJgB", # Adam (deep, charismatic, cynical)
     "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
     "ELEVENLABS_STABILITY": 0.45,
     "ELEVENLABS_SIMILARITY_BOOST": 0.85,
