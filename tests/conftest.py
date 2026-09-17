@@ -1,5 +1,17 @@
 import os
 import pytest
+from unittest.mock import MagicMock
+
+# Mock google auth if no credentials exist in environment
+try:
+    import google.auth
+    from google.auth.credentials import AnonymousCredentials
+    try:
+        google.auth.default()
+    except Exception:
+        google.auth.default = lambda *args, **kwargs: (AnonymousCredentials(), "test-project")
+except Exception:
+    pass
 
 # Ensure test settings are populated before importing src modules
 os.environ.setdefault("TELEGRAM_TOKEN", "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")

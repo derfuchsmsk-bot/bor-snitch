@@ -530,10 +530,16 @@ def get_admin_html() -> str:
             </h2>
             <p class="text-xs text-slate-400">Мониторинг обязательств, споров и статусов договоренностей участников</p>
           </div>
-          <button onclick="loadAgreements()"
-                  class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-            Обновить
-          </button>
+          <div class="flex items-center gap-2">
+            <button onclick="runWeeklyAgreementsScan(false)" id="btn-scan-agreements"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/30 transition flex items-center gap-1.5">
+              <span>🔍 Просканировать за неделю</span>
+            </button>
+            <button onclick="loadAgreements()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              Обновить
+            </button>
+          </div>
         </div>
 
         <div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -567,7 +573,7 @@ def get_admin_html() -> str:
           <p class="text-xs text-slate-400">Ручной запуск регулярных заданий и служебных алгоритмов</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <!-- Action: Daily Analysis -->
           <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
             <div>
@@ -578,6 +584,19 @@ def get_admin_html() -> str:
             <button onclick="runDailyAnalysisAction()" id="btn-action-analysis"
                     class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30">
               <span>Запустить анализ</span>
+            </button>
+          </div>
+
+          <!-- Action: Agreement Scan -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div class="text-2xl mb-2">🤝</div>
+              <h3 class="text-sm font-bold text-white">Поиск договоренностей</h3>
+              <p class="text-xs text-slate-400 mt-1">Сканирует переписку за последние 7 дней на предмет обещаний («Слово Пацана») и записывает их.</p>
+            </div>
+            <button onclick="runWeeklyAgreementsScan(true)" id="btn-action-agreements-scan"
+                    class="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-sky-900/30">
+              <span>Просканировать за неделю</span>
             </button>
           </div>
 
@@ -1540,6 +1559,31 @@ def get_admin_html() -> str:
       } finally {
         btn.disabled = false;
         btn.textContent = 'Запустить анализ';
+      }
+    }
+
+    async function runWeeklyAgreementsScan(notifyTg = false) {
+      if (!confirm(`Просканировать сообщения за последние 7 дней на предмет договоренностей в чате ${state.currentChatId}?`)) return;
+      const btn1 = document.getElementById('btn-scan-agreements');
+      const btn2 = document.getElementById('btn-action-agreements-scan');
+      if (btn1) { btn1.disabled = true; btn1.textContent = '⏳ Поиск...'; }
+      if (btn2) { btn2.disabled = true; btn2.textContent = '⏳ Поиск...'; }
+      appendConsole(`Запуск мониторинга договоренностей за последние 7 дней (чат: ${state.currentChatId})...`);
+      try {
+        const res = await apiRequest('/api/admin/actions/check_agreements', {
+          method: 'POST',
+          body: JSON.stringify({ chat_id: state.currentChatId, lookback_days: 7, send_telegram: notifyTg })
+        });
+        appendConsole(`Мониторинг завершен!\\nОтвет: ${JSON.stringify(res.result, null, 2)}`);
+        const count = res.result?.new_agreements?.length || 0;
+        showToast(`Поиск завершен. Найдено новых договоренностей: ${count}`);
+        loadAgreements();
+      } catch (err) {
+        appendConsole(`ОШИБКА мониторинга договоренностей: ${err.message}`);
+        showToast('Ошибка мониторинга: ' + err.message, 'error');
+      } finally {
+        if (btn1) { btn1.disabled = false; btn1.textContent = '🔍 Просканировать за неделю'; }
+        if (btn2) { btn2.disabled = false; btn2.textContent = 'Просканировать за неделю'; }
       }
     }
 

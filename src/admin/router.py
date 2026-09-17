@@ -98,6 +98,11 @@ class AgreementStatusRequest(BaseModel):
 class ActionChatRequest(BaseModel):
     chat_id: str
 
+class CheckAgreementsActionRequest(BaseModel):
+    chat_id: str
+    lookback_days: Optional[int] = 7
+    send_telegram: Optional[bool] = False
+
 
 # --- Auth Endpoints ---
 
@@ -530,6 +535,21 @@ async def action_weekly_decay(body: ActionChatRequest, admin=Depends(get_current
         return {"status": "amnesty_applied", "chat_id": body.chat_id}
     except Exception as e:
         logger.error(f"Amnesty failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/admin/actions/check_agreements")
+async def action_check_agreements(body: CheckAgreementsActionRequest, admin=Depends(get_current_admin)):
+    from src.main import analysis_service
+    try:
+        res = await analysis_service.perform_agreement_check(
+            chat_id=body.chat_id,
+            lookback_days=body.lookback_days or 7,
+            send_message=bool(body.send_telegram)
+        )
+        return {"status": "success", "result": res}
+    except Exception as e:
+        logger.error(f"Agreement check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -226,33 +226,47 @@ class AnalysisService:
 
         return {"status": "analyzed", "result": final_result}
 
-    async def perform_agreement_check(self, chat_id: str):
+    async def perform_agreement_check(self, chat_id: str, lookback_days: int = None, send_message: bool = True):
         """
         Checks for new agreements.
+        Supports lookback_days (e.g. 7 for past week) or regular incremental checks.
         """
-        if not config.ENABLE_AGREEMENTS:
-            return
+        if not config.ENABLE_AGREEMENTS and not lookback_days:
+            return {"status": "disabled", "new_agreements": []}
             
         now_utc = datetime.now(timezone.utc)
-        last_check = await get_last_agreement_check(chat_id)
-        
-        if not last_check:
-            last_check = now_utc - timedelta(minutes=30)
+        if lookback_days:
+            last_check = now_utc - timedelta(days=lookback_days)
+        else:
+            last_check = await get_last_agreement_check(chat_id)
+            if not last_check:
+                last_check = now_utc - timedelta(minutes=30)
         
         if last_check.tzinfo is None:
             last_check = last_check.replace(tzinfo=timezone.utc)
             
         logs = await get_logs_for_time_range(chat_id, last_check, now_utc)
         if not logs:
-            await set_last_agreement_check(chat_id, now_utc)
-            return
-        
-        active_agreements = await get_active_agreements(chat_id)
-        ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, chat_id=chat_id)
+            if not lookback_days:
+                await set_last_agreement_check(chat_id, now_utc)
+            return {"status": "no_logs", "messages_scanned": 0, "new_agreements": []}
+
+        # Temporarily enable agreements for AI prompt if manual scan
+        orig_enable = config.ENABLE_AGREEMENTS
+        if lookback_days and not orig_enable:
+            config.ENABLE_AGREEMENTS = True
+
+        try:
+            active_agreements = await get_active_agreements(chat_id)
+            ai_result = await analyze_daily_logs(logs, active_agreements=active_agreements, chat_id=chat_id)
+        finally:
+            if lookback_days and not orig_enable:
+                config.ENABLE_AGREEMENTS = orig_enable
         
         if not ai_result:
-            await set_last_agreement_check(chat_id, now_utc)
-            return
+            if not lookback_days:
+                await set_last_agreement_check(chat_id, now_utc)
+            return {"status": "no_result", "messages_scanned": len(logs), "new_agreements": []}
 
         new_agreements = [ag.model_dump() for ag in ai_result.new_agreements]
         updated_agreements = [upd.model_dump() for upd in ai_result.updated_agreements]
@@ -297,7 +311,18 @@ class AnalysisService:
                     orig_users = ", ".join(orig_ag.get('users', [])) if orig_ag else '???'
                     text += f"📝 {orig_users}: {escape(new_text)}\n"
 
-        if text:
-            await self.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        if text and send_message:
+            try:
+                await self.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            except Exception as e:
+                logging.warning(f"Failed to send agreements telegram notification: {e}")
         
-        await set_last_agreement_check(chat_id, now_utc)
+        if not lookback_days:
+            await set_last_agreement_check(chat_id, now_utc)
+
+        return {
+            "status": "success",
+            "messages_scanned": len(logs),
+            "new_agreements": new_agreements,
+            "updated_agreements": updated_agreements
+        }
