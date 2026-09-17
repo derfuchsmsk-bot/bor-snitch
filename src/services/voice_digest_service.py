@@ -49,7 +49,7 @@ class VoiceDigestService:
         # Summarize logs
         logs_summary = ""
         if logs:
-            sample_logs = logs[-200:] if len(logs) > 200 else logs
+            sample_logs = logs[-350:] if len(logs) > 350 else logs
             log_lines = []
             for m in sample_logs:
                 u = m.get("username") or m.get("full_name") or "Кто-то"
@@ -79,7 +79,7 @@ class VoiceDigestService:
             offenders_summary=offenders_summary,
             current_context=logs_summary
         )
-        prompt += "\n\nВАЖНОЕ ТРЕБОВАНИЕ: Твой ответ ОБЯЗАН быть СТРОГО НА РУССКОМ ЯЗЫКЕ! Никаких английских фраз. Напиши полноценный связный рассказ на 100-140 слов (хронометраж 40-50 секунд речи диктора). Не сокращай до одной строчки!"
+        prompt += "\n\nВАЖНОЕ ТРЕБОВАНИЕ: Твой ответ ОБЯЗАН быть СТРОГО НА РУССКОМ ЯЗЫКЕ! Напиши подробный монолог на 220-320 слов (хронометраж 1.5 - 2 минуты речи). Подробно пройдись по всем событиям дня!"
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
         try:
@@ -87,7 +87,7 @@ class VoiceDigestService:
                 contents=[prompt],
                 generation_config={
                     "temperature": 0.8,
-                    "max_output_tokens": 2048
+                    "max_output_tokens": 3500
                 },
                 safety_settings=SAFETY_SETTINGS
             )

@@ -69,7 +69,7 @@ class TTSService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 402 and v_id != "pNInz6obpgDQGcFmaJgB":
                 cls._unsupported_voices.add(v_id)
