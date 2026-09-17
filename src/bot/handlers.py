@@ -251,6 +251,37 @@ async def cmd_casino(message: types.Message):
     text = await GameService.play_casino(message.from_user.id, message.chat.id)
     await message.reply(text, parse_mode="HTML")
 
+@router.message(Command("digest", "voice"))
+async def cmd_voice_digest(message: types.Message):
+    """
+    On-demand Voice Digest trigger: records a criminal podcast recap of recent chat events.
+    """
+    if config.BOT_DISABLED:
+        return
+
+    from ..services.voice_digest_service import VoiceDigestService
+    status_msg = await message.reply("🎙️ <i>Служба криминальной хроники готовит экстренный выпуск...</i>", parse_mode="HTML")
+    try:
+        now_hour = (message.date.hour + getattr(config, "TIMEZONE_OFFSET", 3)) % 24
+        edition = f"Экстренный выпуск ({now_hour:02d}:00 МСК)"
+
+        await VoiceDigestService.create_and_send_voice_digest(
+            chat_id=message.chat.id,
+            edition_type=edition,
+            bot=message.bot,
+            send_to_telegram=True
+        )
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error(f"Error executing /digest command: {e}")
+        try:
+            await status_msg.edit_text("⚠️ <i>Следователь временно недоступен. Попробуйте чуть позже.</i>", parse_mode="HTML")
+        except Exception:
+            pass
+
 @router.message(Command("remember"))
 async def cmd_remember(message: types.Message):
     """

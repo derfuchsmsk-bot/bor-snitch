@@ -203,6 +203,7 @@ async def sync_bot_commands():
                 types.BotCommand(command="report", description="Донос (Reply)"),
                 types.BotCommand(command="casino", description="Испытать удачу"),
                 types.BotCommand(command="all", description="Позвать всех"),
+                types.BotCommand(command="digest", description="Голосовая хроника (Voice)"),
                 types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
                 types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
             ]

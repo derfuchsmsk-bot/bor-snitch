@@ -71,14 +71,15 @@ class VoiceDigestService:
             offenders_summary=offenders_summary,
             current_context=logs_summary
         )
+        prompt += "\n\nВАЖНОЕ ТРЕБОВАНИЕ: Твой ответ ОБЯЗАН быть СТРОГО НА РУССКОМ ЯЗЫКЕ! Никаких английских фраз. Напиши полноценный связный рассказ на 100-140 слов (хронометраж 40-50 секунд речи диктора). Не сокращай до одной строчки!"
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
         try:
             response = await model.generate_content_async(
                 contents=[prompt],
                 generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 500
+                    "temperature": 0.8,
+                    "max_output_tokens": 1000
                 }
             )
             raw_text = response.text.strip()
