@@ -39,12 +39,12 @@ async def test_tts_synthesize_mocked():
 
 @pytest.mark.anyio
 async def test_tts_elevenlabs_fallback():
-    # If Elevenlabs fails, fallback to google
+    # If Elevenlabs fails, fallback to gemini tts
     with patch.object(TTSService, "synthesize_elevenlabs", side_effect=RuntimeError("Elevenlabs quota exceeded")), \
-         patch.object(TTSService, "synthesize_google_tts", new_callable=AsyncMock) as mock_google:
-        mock_google.return_value = b"GOOGLE_OGG_BYTES"
+         patch.object(TTSService, "synthesize_gemini_tts", new_callable=AsyncMock) as mock_gemini:
+        mock_gemini.return_value = b"GEMINI_OGG_BYTES"
         audio, fmt = await TTSService.synthesize_speech("Тестовый текст", preferred_provider="elevenlabs")
-        assert audio == b"GOOGLE_OGG_BYTES"
+        assert audio == b"GEMINI_OGG_BYTES"
         assert fmt == "ogg"
 
 

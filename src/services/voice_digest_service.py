@@ -87,7 +87,7 @@ class VoiceDigestService:
                 contents=[prompt],
                 generation_config={
                     "temperature": 0.8,
-                    "max_output_tokens": 3500
+                    "max_output_tokens": 8192
                 },
                 safety_settings=SAFETY_SETTINGS
             )
@@ -96,7 +96,10 @@ class VoiceDigestService:
                 candidate = response.candidates[0]
                 logger.info(f"Gemini voice candidate finish reason: {candidate.finish_reason}")
                 if candidate.content and candidate.content.parts:
-                    raw_text = "".join([part.text for part in candidate.content.parts if hasattr(part, "text")]).strip()
+                    raw_text = "".join([
+                        part.text for part in candidate.content.parts
+                        if hasattr(part, "text") and not getattr(part, "thought", False)
+                    ]).strip()
             if not raw_text and response.text:
                 raw_text = response.text.strip()
 

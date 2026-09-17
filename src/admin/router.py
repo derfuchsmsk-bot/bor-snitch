@@ -72,6 +72,9 @@ class ConfigUpdateRequest(BaseModel):
     VOICE_DIGEST_VOICE: Optional[str] = None
     VOICE_DIGEST_PITCH: Optional[float] = None
     VOICE_DIGEST_SPEED: Optional[float] = None
+    GOOGLE_TTS_MODEL: Optional[str] = None
+    GOOGLE_TTS_VOICE: Optional[str] = None
+    GOOGLE_TTS_STYLE: Optional[str] = None
     RANK_NORMAL: Optional[List[Optional[int]]] = None
     RANK_SHNYR: Optional[List[Optional[int]]] = None
     RANK_GOAT: Optional[List[Optional[int]]] = None

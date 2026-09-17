@@ -385,21 +385,22 @@ def get_admin_html() -> str:
             <div>
               <label class="block text-xs font-medium text-slate-400 mb-1">Движок озвучки (TTS Provider)</label>
               <select id="cfg-TTS_PROVIDER" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white">
-                <option value="elevenlabs">ElevenLabs (Ультра-реализм, эмоции)</option>
-                <option value="google">Google Cloud TTS (Нативный Wavenet)</option>
+                <option value="gemini">Google Cloud Gemini 3.1 Flash TTS (Стиль, Бесплатно)</option>
+                <option value="elevenlabs">ElevenLabs (Adam)</option>
+                <option value="google">Google Wavenet</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">ElevenLabs Voice ID</label>
-              <input type="text" id="cfg-ELEVENLABS_VOICE_ID" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="pNInz6obpgDQGcFmaJgB">
-              <div class="text-[10px] text-slate-500 mt-1">Adam: pNInz6obpgDQGcFmaJgB | George: JBFqnCBsd6RMkjVDRZzb</div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Голос (Gemini TTS Voice)</label>
+              <input type="text" id="cfg-GOOGLE_TTS_VOICE" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="Sadaltager">
+              <div class="text-[10px] text-slate-500 mt-1">Sadaltager (мужской, солидный) | Puck | Zephyr</div>
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-slate-400 mb-1">Резервный голос (Google Cloud TTS)</label>
-              <input type="text" id="cfg-VOICE_DIGEST_VOICE" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono" placeholder="ru-RU-Wavenet-D">
-              <div class="text-[10px] text-slate-500 mt-1">Используется, если ElevenLabs недоступен или кончилась квота</div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Инструкция по стилю речи (Style Instructions)</label>
+              <textarea id="cfg-GOOGLE_TTS_STYLE" rows="2" class="w-full p-2.5 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-slate-200 font-mono focus:outline-none focus:border-rose-500"></textarea>
+              <div class="text-[10px] text-slate-500 mt-1">Управляет интонацией в Gemini 3.1 Flash TTS</div>
             </div>
           </div>
 

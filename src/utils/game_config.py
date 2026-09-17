@@ -36,12 +36,15 @@ DEFAULT_CONFIG_VALUES = {
     "REACTION_COOLDOWN_SECONDS": 120,
     "REACTION_ALLOWED_EMOJIS": ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"],
 
-    # Voice Digest (Daily audio reports via ElevenLabs or Google TTS)
+    # Voice Digest (Daily audio reports via Gemini 3.1 Flash TTS / ElevenLabs)
     "VOICE_DIGEST_ENABLED": True,
     "VOICE_DIGEST_TIME_1": "14:00",
     "VOICE_DIGEST_TIME_2": "22:00",
-    "TTS_PROVIDER": "elevenlabs",
-    "ELEVENLABS_VOICE_ID": "pNInz6obpgDQGcFmaJgB", # Adam (deep, charismatic, cynical)
+    "TTS_PROVIDER": "gemini",
+    "GOOGLE_TTS_MODEL": "gemini-3.1-flash-tts-preview",
+    "GOOGLE_TTS_VOICE": "Sadaltager",
+    "GOOGLE_TTS_STYLE": "Read aloud in an authoritative, calm, slightly sarcastic tone with dry humor, like an observant prison cell boss.",
+    "ELEVENLABS_VOICE_ID": "pNInz6obpgDQGcFmaJgB",
     "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
     "ELEVENLABS_STABILITY": 0.45,
     "ELEVENLABS_SIMILARITY_BOOST": 0.85,
