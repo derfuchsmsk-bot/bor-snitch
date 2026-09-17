@@ -312,8 +312,14 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
                         "type": "OBJECT",
                         "properties": {
                             "id": {"type": "STRING", "description": "ID"},
-                            "text": {"type": "STRING", "description": "New text"},
-                            "reason": {"type": "STRING", "description": "Reason"}
+                            "text": {"type": "STRING", "description": "New text in Russian"},
+                            "reason": {"type": "STRING", "description": "Reason for update (e.g. participant joined, rescheduled date)"},
+                            "users": {
+                                "type": "ARRAY",
+                                "items": {"type": "STRING"},
+                                "description": "Updated list of participants without @"
+                            },
+                            "expires_at": {"type": "STRING", "description": "New expiration YYYY-MM-DDTHH:MM:SS if rescheduled"}
                         },
                         "required": ["id", "text", "reason"]
                     }

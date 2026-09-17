@@ -16,7 +16,9 @@ class ResolvedAgreement(BaseModel):
 class UpdatedAgreement(BaseModel):
     id: str = Field(description="ID документа договоренности")
     text: str = Field(description="Обновленный текст договоренности СТРОГО НА РУССКОМ")
-    reason: str = Field(description="Почему потребовалось обновление?")
+    reason: str = Field(description="Почему потребовалось обновление (например: присоединился новый участник, перенесли дату/время встречи)?")
+    users: Optional[List[str]] = Field(None, description="Обновленный полный список участников (username без @), если кто-то присоединился или вышел")
+    expires_at: Optional[str] = Field(None, description="Новая дата/время истечения YYYY-MM-DDTHH:MM:SS, если перенесли срок")
 
 class Offender(BaseModel):
     user_id: Optional[int] = Field(None, description="Telegram User ID (если известен)")

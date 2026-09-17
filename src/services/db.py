@@ -125,14 +125,26 @@ async def update_agreement_status(chat_id: int, agreement_id: str, status: str, 
     
     await agreement_repository.update_agreement(chat_id, agreement_id, update_data)
 
-async def update_agreement_text(chat_id: int, agreement_id: str, new_text: str, reason: str = None):
-    """[DEPRECATED] Updates agreement text and optionally adds an update reason."""
-    warnings.warn("update_agreement_text is deprecated, use agreement_repository.update_agreement instead", DeprecationWarning, stacklevel=2)
+async def update_agreement_text(chat_id: int, agreement_id: str, new_text: str, reason: str = None, users: list = None, expires_at = None):
+    """Updates agreement text and optionally adds an update reason, updated users, and expiration."""
     update_data = {"text": new_text}
     if reason:
         update_data["update_reason"] = reason
+    if users:
+        update_data["users"] = [u.lstrip("@") for u in users if u]
+    if expires_at:
+        if isinstance(expires_at, str):
+            try:
+                dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                update_data["expires_at"] = dt
+            except Exception:
+                pass
+        elif isinstance(expires_at, datetime):
+            update_data["expires_at"] = expires_at
+
     update_data["updated_at"] = firestore.SERVER_TIMESTAMP
-    
     await agreement_repository.update_agreement(chat_id, agreement_id, update_data)
 
 async def get_last_agreement_check(chat_id: str) -> datetime:

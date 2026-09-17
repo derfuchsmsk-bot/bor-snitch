@@ -199,9 +199,14 @@ class AnalysisService:
                 for upd in updated_agreements:
                     upd_id = upd.get('id')
                     new_text = upd.get('text')
-                    orig_ag = await get_agreement_by_id(chat_id, upd_id)
-                    orig_users = ", ".join(orig_ag.get('users', [])) if orig_ag else '???'
-                    text += f"📝 {orig_users}: {escape(new_text)}\n"
+                    reason = upd.get('reason')
+                    upd_users = upd.get('users')
+                    upd_expires = upd.get('expires_at')
+                    if upd_id and new_text:
+                        await update_agreement_text(chat_id, upd_id, new_text, reason=reason, users=upd_users, expires_at=upd_expires)
+                        orig_ag = await get_agreement_by_id(chat_id, upd_id)
+                        orig_users = ", ".join(upd_users or (orig_ag.get('users', []) if orig_ag else ['???']))
+                        text += f"📝 {orig_users}: {escape(new_text)}\n"
                      
             try:
                 await self.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
@@ -305,10 +310,12 @@ class AnalysisService:
                 upd_id = upd.get('id')
                 new_text = upd.get('text')
                 reason = upd.get('reason')
+                upd_users = upd.get('users')
+                upd_expires = upd.get('expires_at')
                 if upd_id and new_text:
-                    await update_agreement_text(chat_id, upd_id, new_text, reason)
+                    await update_agreement_text(chat_id, upd_id, new_text, reason=reason, users=upd_users, expires_at=upd_expires)
                     orig_ag = await get_agreement_by_id(chat_id, upd_id)
-                    orig_users = ", ".join(orig_ag.get('users', [])) if orig_ag else '???'
+                    orig_users = ", ".join(upd_users or (orig_ag.get('users', []) if orig_ag else ['???']))
                     text += f"📝 {orig_users}: {escape(new_text)}\n"
 
         if text and send_message:
