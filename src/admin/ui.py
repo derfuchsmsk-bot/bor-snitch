@@ -159,6 +159,10 @@ def get_admin_html() -> str:
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             🤝 Договоренности
           </button>
+          <button onclick="switchTab('lessons')" data-tab="lessons"
+                  class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
+            🎓 Уроки и Обучение
+          </button>
           <button onclick="switchTab('actions')" data-tab="actions"
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             ⚡ Операции
@@ -654,6 +658,78 @@ def get_admin_html() -> str:
         </div>
       </section>
 
+      <!-- ================= TAB: LESSONS ================= -->
+      <section id="tab-content-lessons" class="tab-pane hidden space-y-6">
+        <!-- Top Banner -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111827] p-5 rounded-2xl border border-slate-800">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>🎓</span> Самообучение и Уроки бота (Lessons)
+            </h2>
+            <p class="text-xs text-slate-400">Автономное извлечение уроков из реакций чата на вердикты бота, база правил поведения и адаптация промптов.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="showAddLessonModal()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 transition flex items-center gap-1.5">
+              <span>+ Добавить урок</span>
+            </button>
+            <button onclick="showFeedbackAnalysisModal()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/30 transition flex items-center gap-1.5">
+              <span>🤖 Анализ фидбека</span>
+            </button>
+            <button onclick="loadLessons()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              Обновить
+            </button>
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl">
+            <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">Всего уроков</div>
+            <div id="stat-lessons-total" class="text-2xl font-bold text-white mt-1">0</div>
+          </div>
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl">
+            <div class="text-emerald-400 text-xs font-medium uppercase tracking-wider">🟢 Активны (В промпте)</div>
+            <div id="stat-lessons-active" class="text-2xl font-bold text-emerald-400 mt-1">0</div>
+          </div>
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl">
+            <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">📦 В архиве</div>
+            <div id="stat-lessons-archived" class="text-2xl font-bold text-slate-400 mt-1">0</div>
+          </div>
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl">
+            <div class="text-rose-400 text-xs font-medium uppercase tracking-wider">⚠️ Ошибки бота</div>
+            <div id="stat-lessons-mistakes" class="text-2xl font-bold text-rose-400 mt-1">0</div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Controls -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111827] p-4 rounded-2xl border border-slate-800">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-400 font-medium mr-1">Статус:</span>
+            <button onclick="setLessonsFilter('all')" id="filter-btn-all" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-emerald-400 transition">Все</button>
+            <button onclick="setLessonsFilter('active')" id="filter-btn-active" class="px-3 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition">Только активные</button>
+            <button onclick="setLessonsFilter('archived')" id="filter-btn-archived" class="px-3 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition">В архиве</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="lessons-verdict-filter" onchange="onLessonsVerdictChanged()" class="px-3 py-1.5 bg-[#1a2333] border border-slate-700 rounded-xl text-white text-xs">
+              <option value="all">Все вердикты</option>
+              <option value="fair">✓ Справедливо</option>
+              <option value="mistake">⚠️ Ошибка бота</option>
+              <option value="unclear">? Непонятно</option>
+            </select>
+            <input type="text" id="lessons-search" oninput="onLessonsSearchChanged()" placeholder="Поиск по правилу или причине..."
+                   class="px-3 py-1.5 bg-[#1a2333] border border-slate-700 rounded-xl text-white placeholder-slate-500 text-xs w-full sm:w-64 focus:outline-none focus:border-purple-500">
+          </div>
+        </div>
+
+        <!-- Lessons Container -->
+        <div id="lessons-list-container" class="space-y-3">
+          <div class="py-12 text-center text-slate-500 text-xs">Загрузка уроков...</div>
+        </div>
+      </section>
+
       <!-- ================= TAB: ACTIONS ================= -->
       <section id="tab-content-actions" class="tab-pane hidden space-y-6">
         <div class="bg-[#111827] p-5 rounded-2xl border border-slate-800">
@@ -663,7 +739,7 @@ def get_admin_html() -> str:
           <p class="text-xs text-slate-400">Ручной запуск регулярных заданий и служебных алгоритмов</p>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           <!-- Action: Daily Analysis -->
           <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
             <div>
@@ -732,6 +808,19 @@ def get_admin_html() -> str:
             <button onclick="runLoreEvolutionAction()" id="btn-action-evolution"
                     class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/30">
               <span>Запустить эволюцию</span>
+            </button>
+          </div>
+
+          <!-- Action: Feedback Analysis / Self-Learning -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div class="text-2xl mb-2">🎓</div>
+              <h3 class="text-sm font-bold text-white">Анализ фидбека (Обучение)</h3>
+              <p class="text-xs text-slate-400 mt-1">Анализирует реакцию участников на вердикты бота за выбранную дату и формулирует обучающие правила.</p>
+            </div>
+            <button onclick="showFeedbackAnalysisModal()" id="btn-action-feedback-analysis"
+                    class="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30">
+              <span>Запустить анализ</span>
             </button>
           </div>
         </div>
@@ -863,6 +952,96 @@ def get_admin_html() -> str:
     </div>
   </div>
 
+  <!-- MODAL: Add/Edit Lesson -->
+  <div id="modal-lesson" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 id="modal-lesson-title" class="text-base font-bold text-white flex items-center gap-2">
+          <span>🎓</span> <span>Добавить урок</span>
+        </h3>
+        <button onclick="closeModal('modal-lesson')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <input type="hidden" id="modal-lesson-id">
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Сформулированное правило поведения (learned_rule) *</label>
+          <textarea id="modal-lesson-rule" rows="3" required
+                    class="w-full p-3 bg-[#1a2333] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans text-xs"
+                    placeholder="Например: Не зацикливаться на времени суток и призывах «идти спать» в каждом ответе."></textarea>
+        </div>
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Обоснование / Причина (reasoning)</label>
+          <textarea id="modal-lesson-reasoning" rows="2"
+                    class="w-full p-3 bg-[#1a2333] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans text-xs"
+                    placeholder="Почему бот решил выучить это правило..."></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Вердикт</label>
+            <select id="modal-lesson-verdict" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-xs">
+              <option value="fair">fair (Справедливо)</option>
+              <option value="mistake">mistake (Ошибка бота)</option>
+              <option value="unclear">unclear (Непонятно)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Статус</label>
+            <select id="modal-lesson-status" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-xs">
+              <option value="active">active (Активен в промпте)</option>
+              <option value="archived">archived (В архиве)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Дата события (YYYY-MM-DD)</label>
+          <input type="text" id="modal-lesson-date" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white font-mono text-xs" placeholder="2026-09-18">
+        </div>
+        <div id="modal-lesson-context-box" class="hidden">
+          <label class="block font-medium text-slate-400 mb-1">Контекст триггера (исходные сообщения)</label>
+          <pre id="modal-lesson-context" class="p-2.5 bg-[#0d1424] border border-slate-800 rounded-xl text-[11px] text-slate-400 font-mono max-h-28 overflow-y-auto whitespace-pre-wrap"></pre>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-lesson')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Отмена</button>
+        <button onclick="saveLessonForm()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-900/30">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Feedback Analysis On-Demand -->
+  <div id="modal-feedback-analysis" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>🤖</span> <span>Анализ обратной связи (Самообучение)</span>
+        </h3>
+        <button onclick="closeModal('modal-feedback-analysis')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-400">
+          Gemini проанализирует сообщения в чате (реплаи и упоминания бота) за выбранную дату, оценит справедливость действий и при необходимости сформулирует новое обучающее правило.
+        </p>
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Дата для анализа (YYYY-MM-DD):</label>
+          <input type="date" id="feedback-analysis-date" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white font-mono text-xs">
+        </div>
+        <div id="feedback-analysis-result-container" class="hidden p-4 bg-[#0d1424] border border-slate-800 rounded-xl space-y-2">
+          <div class="font-bold text-sm text-purple-400 flex items-center gap-1.5">
+            <span>✨</span> <span id="feedback-result-title">Результат анализа</span>
+          </div>
+          <div id="feedback-result-body" class="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap font-mono"></div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-feedback-analysis')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Закрыть</button>
+        <button onclick="executeFeedbackAnalysis()" id="btn-submit-feedback-analysis"
+                class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-900/30 flex items-center gap-1.5">
+          <span>🚀 Запустить анализ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- CLIENT-SIDE LOGIC -->
   <script>
     let state = {
@@ -874,6 +1053,11 @@ def get_admin_html() -> str:
       users: [],
       selectedUserForPoints: null,
       selectedUserForAchievements: null,
+      lessons: [],
+      lessonsFilter: 'all',
+      lessonsVerdictFilter: 'all',
+      lessonsSearch: '',
+      editingLessonId: null,
       config: {},
       defaults: {}
     };
@@ -1014,6 +1198,7 @@ def get_admin_html() -> str:
       if (state.activeTab === 'users') loadUsers();
       if (state.activeTab === 'lore') loadFactsAndLore();
       if (state.activeTab === 'agreements') loadAgreements();
+      if (state.activeTab === 'lessons') loadLessons();
     }
 
     // --- Tab Navigation ---
@@ -1035,6 +1220,7 @@ def get_admin_html() -> str:
       if (tabId === 'users') loadUsers();
       if (tabId === 'lore') loadFactsAndLore();
       if (tabId === 'agreements') loadAgreements();
+      if (tabId === 'lessons') loadLessons();
     }
 
     // --- TAB: CONFIG ---
@@ -1656,6 +1842,321 @@ def get_admin_html() -> str:
         loadAgreements();
       } catch (err) {
         showToast('Ошибка: ' + err.message, 'error');
+      }
+    }
+
+    // --- TAB: LESSONS ---
+    async function loadLessons() {
+      if (!state.currentChatId) return;
+      const container = document.getElementById('lessons-list-container');
+      container.innerHTML = '<div class="py-12 text-center text-slate-500 text-xs">Загрузка уроков...</div>';
+      try {
+        const data = await apiRequest(`/api/admin/chats/${state.currentChatId}/lessons`);
+        state.lessons = data.lessons || [];
+        renderLessons();
+      } catch (err) {
+        container.innerHTML = `<div class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">Ошибка загрузки уроков: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderLessons() {
+      const container = document.getElementById('lessons-list-container');
+      if (!container) return;
+
+      const lessons = state.lessons || [];
+      const total = lessons.length;
+      const active = lessons.filter(l => (l.status || 'active') === 'active').length;
+      const archived = lessons.filter(l => l.status === 'archived').length;
+      const mistakes = lessons.filter(l => l.verdict === 'mistake' || l.verdict === 'ошибка').length;
+
+      const statTotal = document.getElementById('stat-lessons-total');
+      const statActive = document.getElementById('stat-lessons-active');
+      const statArchived = document.getElementById('stat-lessons-archived');
+      const statMistakes = document.getElementById('stat-lessons-mistakes');
+
+      if (statTotal) statTotal.textContent = total;
+      if (statActive) statActive.textContent = active;
+      if (statArchived) statArchived.textContent = archived;
+      if (statMistakes) statMistakes.textContent = mistakes;
+
+      // Filter by status
+      let filtered = lessons;
+      if (state.lessonsFilter === 'active') {
+        filtered = filtered.filter(l => (l.status || 'active') === 'active');
+      } else if (state.lessonsFilter === 'archived') {
+        filtered = filtered.filter(l => l.status === 'archived');
+      }
+
+      // Filter by verdict
+      if (state.lessonsVerdictFilter && state.lessonsVerdictFilter !== 'all') {
+        filtered = filtered.filter(l => (l.verdict || 'fair').toLowerCase() === state.lessonsVerdictFilter.toLowerCase());
+      }
+
+      // Filter by search query
+      if (state.lessonsSearch) {
+        const q = state.lessonsSearch;
+        filtered = filtered.filter(l => {
+          const rule = (l.learned_rule || '').toLowerCase();
+          const reason = (l.reasoning || '').toLowerCase();
+          const date = (l.date_key || '').toLowerCase();
+          const ctx = (l.trigger_context || '').toLowerCase();
+          return rule.includes(q) || reason.includes(q) || date.includes(q) || ctx.includes(q);
+        });
+      }
+
+      container.innerHTML = '';
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="py-12 text-center text-slate-500 text-xs">Уроков не найдено (попробуйте сбросить фильтры или запустите анализ фидбека).</div>';
+        return;
+      }
+
+      filtered.forEach(lesson => {
+        const status = lesson.status || 'active';
+        const verdict = (lesson.verdict || 'fair').toLowerCase();
+
+        let verdictBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✓ Справедливо</span>';
+        if (verdict === 'mistake' || verdict === 'ошибка') {
+          verdictBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30">⚠️ Ошибка бота</span>';
+        } else if (verdict === 'unclear' || verdict === 'непонятно') {
+          verdictBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">? Непонятно</span>';
+        }
+
+        const dateStr = lesson.date_key || (lesson.created_at ? new Date(lesson.created_at).toLocaleDateString() : '—');
+        const card = document.createElement('div');
+        card.className = `bg-[#111827] border ${status === 'active' ? 'border-emerald-500/30' : 'border-slate-800'} rounded-2xl p-5 space-y-3 hover:border-slate-700 transition`;
+
+        card.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              ${status === 'active' 
+                ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🟢 В промпте (Active)</span>' 
+                : '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-700/50 text-slate-400 border border-slate-700">📦 В архиве</span>'}
+              ${verdictBadge}
+              <span class="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">${escapeHtml(dateStr)}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="toggleLessonStatus('${escapeHtml(lesson.id)}', '${escapeHtml(status)}')"
+                      class="px-2.5 py-1 rounded-lg text-xs font-medium ${status === 'active' ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-emerald-600/80 hover:bg-emerald-500 text-white'} transition">
+                ${status === 'active' ? 'В архив' : 'Активировать'}
+              </button>
+              <button onclick="openEditLessonModal('${escapeHtml(lesson.id)}')" title="Редактировать"
+                      class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs transition">✏️</button>
+              <button onclick="deleteLesson('${escapeHtml(lesson.id)}')" title="Удалить"
+                      class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs transition">🗑️</button>
+            </div>
+          </div>
+
+          <div class="text-sm font-semibold text-white leading-relaxed">
+            ${escapeHtml(lesson.learned_rule || '—')}
+          </div>
+
+          ${lesson.reasoning ? `
+            <div class="text-xs text-slate-300 bg-slate-900/60 p-3 rounded-xl border border-slate-800/60">
+              <span class="text-slate-500 font-semibold uppercase text-[10px] block mb-1">Обоснование вердикта:</span>
+              ${escapeHtml(lesson.reasoning)}
+            </div>
+          ` : ''}
+
+          ${lesson.trigger_context ? `
+            <details class="text-[11px] text-slate-400 bg-[#0c121e] rounded-xl p-2.5 border border-slate-800/60">
+              <summary class="cursor-pointer hover:text-slate-200 font-medium select-none">Показать исходные сообщения из чата (контекст)</summary>
+              <pre class="mt-2 text-[10px] font-mono text-slate-400 whitespace-pre-wrap max-h-36 overflow-y-auto leading-normal">${escapeHtml(lesson.trigger_context)}</pre>
+            </details>
+          ` : ''}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function setLessonsFilter(filterType) {
+      state.lessonsFilter = filterType;
+      ['all', 'active', 'archived'].forEach(f => {
+        const btn = document.getElementById(`filter-btn-${f}`);
+        if (!btn) return;
+        if (f === filterType) {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-emerald-400 transition shadow-inner';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition';
+        }
+      });
+      renderLessons();
+    }
+
+    function onLessonsVerdictChanged() {
+      const select = document.getElementById('lessons-verdict-filter');
+      state.lessonsVerdictFilter = select.value;
+      renderLessons();
+    }
+
+    function onLessonsSearchChanged() {
+      const input = document.getElementById('lessons-search');
+      state.lessonsSearch = (input.value || '').toLowerCase().trim();
+      renderLessons();
+    }
+
+    function showAddLessonModal() {
+      state.editingLessonId = null;
+      document.getElementById('modal-lesson-title').innerHTML = '<span>🎓</span> <span>Добавить урок</span>';
+      document.getElementById('modal-lesson-id').value = '';
+      document.getElementById('modal-lesson-rule').value = '';
+      document.getElementById('modal-lesson-reasoning').value = '';
+      document.getElementById('modal-lesson-verdict').value = 'fair';
+      document.getElementById('modal-lesson-status').value = 'active';
+      document.getElementById('modal-lesson-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('modal-lesson-context-box').classList.add('hidden');
+      openModal('modal-lesson');
+    }
+
+    function openEditLessonModal(lessonId) {
+      const lesson = (state.lessons || []).find(l => l.id === lessonId);
+      if (!lesson) return;
+      state.editingLessonId = lessonId;
+      document.getElementById('modal-lesson-title').innerHTML = '<span>✏️</span> <span>Редактировать урок</span>';
+      document.getElementById('modal-lesson-id').value = lesson.id;
+      document.getElementById('modal-lesson-rule').value = lesson.learned_rule || '';
+      document.getElementById('modal-lesson-reasoning').value = lesson.reasoning || '';
+      document.getElementById('modal-lesson-verdict').value = lesson.verdict || 'fair';
+      document.getElementById('modal-lesson-status').value = lesson.status || 'active';
+      document.getElementById('modal-lesson-date').value = lesson.date_key || '';
+      if (lesson.trigger_context) {
+        document.getElementById('modal-lesson-context').textContent = lesson.trigger_context;
+        document.getElementById('modal-lesson-context-box').classList.remove('hidden');
+      } else {
+        document.getElementById('modal-lesson-context-box').classList.add('hidden');
+      }
+      openModal('modal-lesson');
+    }
+
+    async function saveLessonForm() {
+      const rule = document.getElementById('modal-lesson-rule').value.trim();
+      const reasoning = document.getElementById('modal-lesson-reasoning').value.trim();
+      const verdict = document.getElementById('modal-lesson-verdict').value;
+      const status = document.getElementById('modal-lesson-status').value;
+      const dateKey = document.getElementById('modal-lesson-date').value.trim();
+
+      if (!rule) {
+        showToast('Правило урока не может быть пустым', 'error');
+        return;
+      }
+
+      try {
+        if (state.editingLessonId) {
+          await apiRequest(`/api/admin/chats/${state.currentChatId}/lessons/${state.editingLessonId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              learned_rule: rule,
+              reasoning: reasoning,
+              verdict: verdict,
+              status: status
+            })
+          });
+          showToast('Урок успешно обновлен');
+        } else {
+          await apiRequest(`/api/admin/chats/${state.currentChatId}/lessons`, {
+            method: 'POST',
+            body: JSON.stringify({
+              learned_rule: rule,
+              reasoning: reasoning,
+              verdict: verdict,
+              status: status,
+              date_key: dateKey || undefined
+            })
+          });
+          showToast('Новый урок добавлен');
+        }
+        closeModal('modal-lesson');
+        loadLessons();
+      } catch (err) {
+        showToast('Ошибка сохранения: ' + err.message, 'error');
+      }
+    }
+
+    async function toggleLessonStatus(lessonId, currentStatus) {
+      const newStatus = currentStatus === 'active' ? 'archived' : 'active';
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/lessons/${lessonId}/status`, {
+          method: 'POST',
+          body: JSON.stringify({ status: newStatus })
+        });
+        showToast(`Урок переведен в статус "${newStatus}"`);
+        loadLessons();
+      } catch (err) {
+        showToast('Ошибка изменения статуса: ' + err.message, 'error');
+      }
+    }
+
+    async function deleteLesson(lessonId) {
+      if (!confirm('Удалить этот урок?')) return;
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/lessons/${lessonId}`, { method: 'DELETE' });
+        showToast('Урок удален');
+        loadLessons();
+      } catch (err) {
+        showToast('Ошибка удаления: ' + err.message, 'error');
+      }
+    }
+
+    function showFeedbackAnalysisModal() {
+      const dateInput = document.getElementById('feedback-analysis-date');
+      if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+      }
+      const resultBox = document.getElementById('feedback-analysis-result-container');
+      if (resultBox) resultBox.classList.add('hidden');
+      openModal('modal-feedback-analysis');
+    }
+
+    async function executeFeedbackAnalysis() {
+      const dateInput = document.getElementById('feedback-analysis-date');
+      const dateVal = dateInput ? dateInput.value : '';
+      const btn = document.getElementById('btn-submit-feedback-analysis');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Выполняется анализ...</span>';
+      }
+      const resultBox = document.getElementById('feedback-analysis-result-container');
+      const resultBody = document.getElementById('feedback-result-body');
+      const resultTitle = document.getElementById('feedback-result-title');
+
+      appendConsole(`Запуск анализа обратной связи (дата: ${dateVal || 'сегодня'}, чат: ${state.currentChatId})...`);
+
+      try {
+        const res = await apiRequest('/api/admin/actions/analyze_feedback', {
+          method: 'POST',
+          body: JSON.stringify({
+            chat_id: state.currentChatId,
+            date_key: dateVal || undefined
+          })
+        });
+
+        if (resultBox && resultBody) {
+          resultBox.classList.remove('hidden');
+          if (res.result) {
+            const r = res.result;
+            resultTitle.textContent = r.learned_rule ? '🎉 Извлечен новый урок!' : 'ℹ️ Анализ завершен';
+            resultBody.textContent = `Вердикт: ${r.verdict}\nОбоснование: ${r.reasoning}\n${r.learned_rule ? `Правило: ${r.learned_rule}` : 'Новое правило не потребовалось.'}`;
+          } else {
+            resultTitle.textContent = 'ℹ️ Сообщений обратной связи не найдено';
+            resultBody.textContent = res.message || 'За выбранный период пользователи не обсуждали работу бота.';
+          }
+        }
+
+        appendConsole(`Анализ фидбека завершен: ${JSON.stringify(res)}`);
+        showToast('Анализ фидбека завершен!');
+        loadLessons();
+      } catch (err) {
+        if (resultBox && resultBody) {
+          resultBox.classList.remove('hidden');
+          resultTitle.textContent = '❌ Ошибка';
+          resultBody.textContent = err.message;
+        }
+        appendConsole(`ОШИБКА анализа фидбека: ${err.message}`);
+        showToast('Ошибка анализа: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>🚀 Запустить анализ</span>';
+        }
       }
     }
 

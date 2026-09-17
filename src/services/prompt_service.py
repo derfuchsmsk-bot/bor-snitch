@@ -443,10 +443,12 @@ class PromptService:
 
         lessons_str = ""
         if lessons:
-            lessons_str = "\n<learned_lessons>\n"
-            for i, lesson in enumerate(lessons, 1):
-                lessons_str += f"{i}. {lesson}\n"
-            lessons_str += "</learned_lessons>\n"
+            clean_lessons = [str(l).strip() for l in lessons if l and str(l).strip()]
+            if clean_lessons:
+                lessons_str = "\n<learned_lessons>\n"
+                for i, lesson in enumerate(clean_lessons, 1):
+                    lessons_str += f"{i}. {lesson}\n"
+                lessons_str += "</learned_lessons>\n"
 
         agreements_category = (
             f"\n    - Нарушение Договоренностей (Active Agreements)."

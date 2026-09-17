@@ -1,67 +1,78 @@
 import logging
-from datetime import datetime, timezone, timedelta
-from vertexai.generative_models import GenerativeModel
-from .db import db, get_logs_for_time_range
-from ..utils.game_config import config
-from ..utils.prompts import get_feedback_analysis_prompt, FEEDBACK_ANALYSIS_PROMPT
-from ..models.ai import FeedbackAnalysisResult
 import json
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List
+from vertexai.generative_models import GenerativeModel, HarmCategory, HarmBlockThreshold
+from .db import get_logs_for_time_range
+from ..utils.game_config import config
+from ..utils.prompts import get_feedback_analysis_prompt
+from ..models.ai import FeedbackAnalysisResult
+from ..repositories.lesson_repository import lesson_repository
+
+logger = logging.getLogger(__name__)
+
+FEEDBACK_SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
 
 class LearningService:
     @staticmethod
-    async def analyze_feedback(chat_id: int, date_key: str):
+    async def analyze_feedback(chat_id: int | str, date_key: Optional[str] = None) -> Optional[FeedbackAnalysisResult]:
         """
-        Analyzes user feedback (replies to bot) to extract lessons.
+        Analyzes user feedback (replies to bot or messages mentioning the bot) to extract lessons.
+        If date_key is None, uses today's date in bot's timezone.
         """
-        chat_id_str = str(chat_id)
-        
-        # 1. Fetch bot's messages from today
-        # We need messages sent BY THE BOT.
-        # Currently, we don't log bot messages in the 'messages' collection 
-        # (check db.log_message - it takes a Message object, usually from handlers).
-        # However, daily_results stores the offenders.
-        
-        # Let's assume we want to look at messages that are replies to the bot.
-        # To do this effectively, we need to know the bot's user_id.
-        # For now, let's look at all messages from today and filter those that are replies.
-        
+        chat_id_int = int(chat_id)
         moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
-        dt_obj = datetime.strptime(date_key, "%Y-%m-%d")
+
+        if not date_key:
+            now_msk = datetime.now(moscow_tz)
+            date_key = now_msk.strftime("%Y-%m-%d")
+
+        try:
+            dt_obj = datetime.strptime(date_key, "%Y-%m-%d")
+        except ValueError:
+            logger.error(f"Invalid date_key format for analyze_feedback: {date_key}")
+            return None
+
         start_dt = dt_obj.replace(tzinfo=moscow_tz).astimezone(timezone.utc)
         end_dt = start_dt + timedelta(days=1)
-        
-        logs = await get_logs_for_time_range(chat_id, start_dt, end_dt)
+
+        logs = await get_logs_for_time_range(chat_id_int, start_dt, end_dt)
         if not logs:
+            logger.info(f"No logs found for chat {chat_id} on {date_key}")
             return None
 
         # Filter messages that look like feedback (replies or mentions)
-        # In a real scenario, we'd check if reply_to points to a bot message ID.
-        # For simplicity, let's look for messages containing "бот" or "снитч" or replies.
         feedback_logs = []
         for log in logs:
-            text = log.get('text', '').lower()
-            if log.get('reply_to') or any(kw in text for kw in ["бот", "снитч", "snitch"]):
+            text = (log.get("text") or "").lower()
+            if log.get("reply_to") or any(kw in text for kw in ["бот", "снитч", "snitch"]):
                 feedback_logs.append(log)
-        
+
         if not feedback_logs:
-            logging.info(f"No feedback found for chat {chat_id} on {date_key}")
+            logger.info(f"No feedback messages found for chat {chat_id} on {date_key}")
             return None
 
-        # 2. Format feedback for AI
+        # Format feedback for AI
         feedback_str = ""
         for f in feedback_logs:
-            feedback_str += f"- {f.get('username')}: {f.get('text')}\n"
+            username = f.get("username") or "Anon"
+            text = f.get("text") or ""
+            feedback_str += f"- {username}: {text}\n"
 
-        # 3. Call AI
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
         prompt = f"""
         ДАТА: {date_key}
         ЛОГИ ОБРАТНОЙ СВЯЗИ (Сообщения пользователей о боте или ответы боту):
         {feedback_str}
-        
+
         Проанализируй эти сообщения согласно FEEDBACK_ANALYSIS_PROMPT.
         """
-        
+
         try:
             feedback_schema = {
                 "type": "OBJECT",
@@ -78,49 +89,35 @@ class LearningService:
                 generation_config={
                     "response_mime_type": "application/json",
                     "response_schema": feedback_schema
-                }
+                },
+                safety_settings=FEEDBACK_SAFETY_SETTINGS
             )
-            
+
             result_dict = json.loads(response.text)
             result = FeedbackAnalysisResult(**result_dict)
-            
-            if result and result.learned_rule:
-                # 4. Save lesson to DB
-                lesson_coll = db.collection("chats").document(chat_id_str).collection("lessons")
-                await lesson_coll.add({
+
+            if result and result.learned_rule and result.learned_rule.strip():
+                rule_text = result.learned_rule.strip()
+                await lesson_repository.create_lesson(chat_id_int, {
                     "created_at": datetime.now(timezone.utc),
                     "date_key": date_key,
-                    "trigger_context": feedback_str[:1000], # Save a snippet
-                    "learned_rule": result.learned_rule,
+                    "trigger_context": feedback_str[:1000],
+                    "learned_rule": rule_text,
                     "verdict": result.verdict,
                     "reasoning": result.reasoning,
                     "status": "active"
                 })
-                logging.info(f"New lesson learned for chat {chat_id}: {result.learned_rule}")
-                return result
-                
+                logger.info(f"New lesson learned for chat {chat_id}: {rule_text}")
+
+            return result
+
         except Exception as e:
-            logging.error(f"Error during feedback analysis: {e}")
-            
-        return None
+            logger.error(f"Error during feedback analysis for chat {chat_id}: {e}", exc_info=True)
+            return None
 
     @staticmethod
-    async def get_active_lessons(chat_id: int, limit: int = 5):
+    async def get_active_lessons(chat_id: int | str, limit: int = 5) -> List[str]:
         """
-        Fetches active lessons to inject into the prompt.
+        Fetches active lessons (rule strings), newest first, to inject into the prompt.
         """
-        from google.cloud import firestore
-        chat_id_str = str(chat_id)
-        lessons_ref = db.collection("chats").document(chat_id_str).collection("lessons")
-        query = lessons_ref.where(filter=firestore.FieldFilter("status", "==", "active")).limit(limit)
-        
-        lessons = []
-        async for doc in query.stream():
-            lessons.append(doc.to_dict().get("learned_rule"))
-        
-        # Sort in memory to avoid needing composite index
-        lessons.reverse() # If we want "latest" first and they are streamed in order?
-        # Actually stream order is not guaranteed.
-        # But for just a few lessons, we don't need sorting.
-        
-        return lessons
+        return await lesson_repository.get_active_rules(chat_id, limit=limit)

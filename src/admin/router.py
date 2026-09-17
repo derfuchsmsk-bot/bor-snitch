@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Response, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -13,7 +14,10 @@ from src.services.fact_service import FactService
 from src.repositories.user_repository import user_repository
 from src.repositories.fact_repository import fact_repository
 from src.repositories.agreement_repository import agreement_repository
+from src.repositories.lesson_repository import lesson_repository
+from src.services.learning import LearningService
 from src.services.db import db, apply_weekly_amnesty
+from google.cloud import firestore
 from .auth import (
     COOKIE_NAME,
     TOKEN_EXPIRATION_SECONDS,
@@ -115,6 +119,23 @@ class FactCreateRequest(BaseModel):
 class AgreementStatusRequest(BaseModel):
     status: str
 
+class LessonCreateRequest(BaseModel):
+    learned_rule: str
+    reasoning: Optional[str] = None
+    verdict: Optional[str] = "fair"
+    status: Optional[str] = "active"
+    trigger_context: Optional[str] = None
+    date_key: Optional[str] = None
+
+class LessonUpdateRequest(BaseModel):
+    learned_rule: Optional[str] = None
+    reasoning: Optional[str] = None
+    verdict: Optional[str] = None
+    status: Optional[str] = None
+
+class LessonStatusRequest(BaseModel):
+    status: str
+
 class ActionChatRequest(BaseModel):
     chat_id: str
 
@@ -122,6 +143,10 @@ class CheckAgreementsActionRequest(BaseModel):
     chat_id: str
     lookback_days: Optional[int] = 7
     send_telegram: Optional[bool] = False
+
+class AnalyzeFeedbackActionRequest(BaseModel):
+    chat_id: str
+    date_key: Optional[str] = None
 
 class VoiceDigestActionRequest(BaseModel):
     chat_id: str
@@ -525,6 +550,87 @@ async def delete_agreement(chat_id: str, agreement_id: str, admin=Depends(get_cu
     return {"status": "deleted", "agreement_id": agreement_id}
 
 
+# --- Lessons & Self-Learning Endpoints ---
+
+@router.get("/api/admin/chats/{chat_id}/lessons")
+async def list_lessons(chat_id: str, status: Optional[str] = None, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    lessons = await lesson_repository.get_lessons(c_id, status=status)
+    return {"chat_id": chat_id, "lessons": lessons}
+
+
+@router.post("/api/admin/chats/{chat_id}/lessons")
+async def add_lesson(chat_id: str, body: LessonCreateRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    rule_clean = body.learned_rule.strip()
+    if not rule_clean:
+        raise HTTPException(status_code=400, detail="Правило урока не может быть пустым")
+
+    lesson_data = {
+        "learned_rule": rule_clean,
+        "reasoning": (body.reasoning or "").strip(),
+        "verdict": body.verdict or "fair",
+        "status": body.status or "active",
+        "trigger_context": (body.trigger_context or "Добавлено вручную через CMS").strip(),
+        "date_key": body.date_key or datetime.now().strftime("%Y-%m-%d"),
+    }
+    created = await lesson_repository.create_lesson(c_id, lesson_data)
+    return {"status": "created", "lesson": created}
+
+
+@router.put("/api/admin/chats/{chat_id}/lessons/{lesson_id}")
+async def update_lesson(chat_id: str, lesson_id: str, body: LessonUpdateRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "learned_rule" in updates:
+        updates["learned_rule"] = updates["learned_rule"].strip()
+        if not updates["learned_rule"]:
+            raise HTTPException(status_code=400, detail="Правило урока не может быть пустым")
+
+    success = await lesson_repository.update_lesson(c_id, lesson_id, updates)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update lesson")
+    return {"status": "updated", "lesson_id": lesson_id, "updates": updates}
+
+
+@router.post("/api/admin/chats/{chat_id}/lessons/{lesson_id}/status")
+async def update_lesson_status(chat_id: str, lesson_id: str, body: LessonStatusRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    success = await lesson_repository.set_lesson_status(c_id, lesson_id, body.status)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update lesson status")
+    return {"status": "status_updated", "lesson_id": lesson_id, "new_status": body.status}
+
+
+@router.delete("/api/admin/chats/{chat_id}/lessons/{lesson_id}")
+async def delete_lesson(chat_id: str, lesson_id: str, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    success = await lesson_repository.delete_lesson(c_id, lesson_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete lesson")
+    return {"status": "deleted", "lesson_id": lesson_id}
+
+
 # --- Live Actions Endpoints ---
 
 @router.post("/api/admin/actions/toggle_bot")
@@ -613,3 +719,29 @@ async def action_voice_digest(body: VoiceDigestActionRequest, admin=Depends(get_
     except Exception as e:
         logger.error(f"Voice digest generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка генерации голосовой хроники: {str(e)}")
+
+
+@router.post("/api/admin/actions/analyze_feedback")
+async def action_analyze_feedback(body: AnalyzeFeedbackActionRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(body.chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    try:
+        result = await LearningService.analyze_feedback(c_id, body.date_key)
+        if result:
+            return {
+                "status": "success",
+                "result": result.model_dump(),
+                "learned": bool(result.learned_rule and result.learned_rule.strip())
+            }
+        return {
+            "status": "no_feedback",
+            "result": None,
+            "message": "Сообщений с обратной связью не найдено или коррекция не требуется."
+        }
+    except Exception as e:
+        logger.error(f"Feedback analysis action failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка анализа обратной связи: {str(e)}")
+
