@@ -282,51 +282,6 @@ async def cmd_voice_digest(message: types.Message):
         except Exception:
             pass
 
-@router.message(Command("call", "voice_join"))
-async def cmd_voice_call_join(message: types.Message):
-    """
-    Connects the bot to the Telegram group voice chat as Kizaru.
-    Auto-disconnects after 60 seconds of inactivity.
-    """
-    if config.BOT_DISABLED:
-        return
-
-    from ..services.voice_chat_service import VoiceChatService
-
-    status_msg = await message.reply("🎙️ <i>Снитч-Бот подрубается к войсу...</i>", parse_mode="HTML")
-    try:
-        greeting = await VoiceChatService.join_voice_chat(message.chat.id)
-        await status_msg.edit_text(
-            f"🔊 <b>Снитч-Бот залетел в голосовой чат!</b>\n"
-            f"<i>«{escape(greeting)}»</i>\n\n"
-            f"⏱️ <i>Автоматически выйдет через 60 секунд молчания. Принудительный выход: /voice_leave</i>",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logging.error(f"Failed to join voice chat: {e}")
-        await status_msg.edit_text(
-            f"⚠️ <i>Не удалось подключиться к войсу: {escape(str(e))}. Убедитесь, что голосовой чат запущен в группе!</i>",
-            parse_mode="HTML"
-        )
-
-@router.message(Command("voice_leave", "leave_call", "leave"))
-async def cmd_voice_call_leave(message: types.Message):
-    """
-    Disconnects the bot from the group voice chat immediately.
-    """
-    if config.BOT_DISABLED:
-        return
-
-    from ..services.voice_chat_service import VoiceChatService
-    try:
-        phrase = await VoiceChatService.leave_voice_chat(message.chat.id, reason="manual")
-        text = "👋 <b>Снитч-Бот отключился от голосового чата.</b>"
-        if phrase:
-            text += f"\n<i>«{escape(phrase)}»</i>"
-        await message.reply(text, parse_mode="HTML")
-    except Exception as e:
-        logging.error(f"Failed to leave voice chat: {e}")
-
 @router.message(Command("remember"))
 async def cmd_remember(message: types.Message):
     """
@@ -441,17 +396,6 @@ async def handle_messages(message: types.Message):
     # Cynical Comment Logic via ChatService
     comment_text = message.text or override_text
 
-    # Voice Chat Live Speaking Hook: if bot is in a voice call, speak into the call!
-    from ..services.voice_chat_service import VoiceChatService
-    if VoiceChatService.is_in_call(message.chat.id):
-        txt_lower = comment_text.lower()
-        bot_user = await message.bot.get_me()
-        is_direct = f"@{bot_user.username}" in comment_text or (message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id)
-        is_keyword = any(k in txt_lower for k in ["снитч", "кизару", "бот", "поясни", "скажи", "как думаешь", "ты тут", "слышишь", "эй"])
-        if is_direct or is_keyword or (len(comment_text) > 8 and random.random() < 0.30):
-            uname = message.from_user.username or message.from_user.first_name
-            asyncio.create_task(VoiceChatService.speak_text_response_in_call(message.chat.id, uname, comment_text))
-    
     comment = await ChatService.process_cynical_comment(message, comment_text)
     if comment:
         sent_msg = await message.reply(comment)
