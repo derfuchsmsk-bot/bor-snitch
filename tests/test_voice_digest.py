@@ -29,10 +29,23 @@ async def test_tts_synthesize_mocked():
     mock_resp.audio_content = b"OggS_fake_audio_bytes_123"
     mock_client.synthesize_speech = AsyncMock(return_value=mock_resp)
 
-    with patch.object(TTSService, "_get_client", return_value=mock_client):
-        audio = await TTSService.synthesize_voice_ogg("Добрый день, граждане подсудимые.")
+    with patch.object(TTSService, "_get_google_client", return_value=mock_client), \
+         patch("src.services.tts_service.config.TTS_PROVIDER", "google"):
+        audio, fmt = await TTSService.synthesize_speech("Добрый день, граждане подсудимые.", preferred_provider="google")
         assert audio == b"OggS_fake_audio_bytes_123"
+        assert fmt == "ogg"
         assert mock_client.synthesize_speech.called
+
+
+@pytest.mark.anyio
+async def test_tts_elevenlabs_fallback():
+    # If Elevenlabs fails, fallback to google
+    with patch.object(TTSService, "synthesize_elevenlabs", side_effect=RuntimeError("Elevenlabs quota exceeded")), \
+         patch.object(TTSService, "synthesize_google_tts", new_callable=AsyncMock) as mock_google:
+        mock_google.return_value = b"GOOGLE_OGG_BYTES"
+        audio, fmt = await TTSService.synthesize_speech("Тестовый текст", preferred_provider="elevenlabs")
+        assert audio == b"GOOGLE_OGG_BYTES"
+        assert fmt == "ogg"
 
 
 @pytest.mark.anyio

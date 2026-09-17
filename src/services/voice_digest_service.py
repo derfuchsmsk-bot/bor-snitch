@@ -130,7 +130,7 @@ class VoiceDigestService:
             return {"status": "skipped", "reason": "voice_digest_disabled"}
 
         script = await cls.generate_digest_script(chat_id, edition_type)
-        audio_bytes = await TTSService.synthesize_voice_ogg(script)
+        audio_bytes, audio_format = await TTSService.synthesize_speech(script)
 
         if send_to_telegram and bot:
             if "дневн" in edition_type.lower() or "14:00" in edition_type:
@@ -142,7 +142,7 @@ class VoiceDigestService:
 
             caption = f"<b>{title}</b>"
 
-            voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.ogg")
+            voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.{audio_format}")
             try:
                 await bot.send_voice(
                     chat_id=chat_id,

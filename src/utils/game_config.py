@@ -36,10 +36,15 @@ DEFAULT_CONFIG_VALUES = {
     "REACTION_COOLDOWN_SECONDS": 120,
     "REACTION_ALLOWED_EMOJIS": ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"],
 
-    # Voice Digest (Daily audio reports via Google Cloud TTS)
+    # Voice Digest (Daily audio reports via ElevenLabs or Google TTS)
     "VOICE_DIGEST_ENABLED": True,
     "VOICE_DIGEST_TIME_1": "14:00",
     "VOICE_DIGEST_TIME_2": "22:00",
+    "TTS_PROVIDER": "elevenlabs",
+    "ELEVENLABS_VOICE_ID": "6A9D8WSMm4rFsg2DWFeE", # Egor Gadzhiyev (fallback to Adam if free plan)
+    "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
+    "ELEVENLABS_STABILITY": 0.45,
+    "ELEVENLABS_SIMILARITY_BOOST": 0.85,
     "VOICE_DIGEST_VOICE": "ru-RU-Wavenet-D",
     "VOICE_DIGEST_PITCH": -1.5,
     "VOICE_DIGEST_SPEED": 1.05,

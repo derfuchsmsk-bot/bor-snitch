@@ -64,6 +64,11 @@ class ConfigUpdateRequest(BaseModel):
     VOICE_DIGEST_ENABLED: Optional[bool] = None
     VOICE_DIGEST_TIME_1: Optional[str] = None
     VOICE_DIGEST_TIME_2: Optional[str] = None
+    TTS_PROVIDER: Optional[str] = None
+    ELEVENLABS_VOICE_ID: Optional[str] = None
+    ELEVENLABS_MODEL_ID: Optional[str] = None
+    ELEVENLABS_STABILITY: Optional[float] = None
+    ELEVENLABS_SIMILARITY_BOOST: Optional[float] = None
     VOICE_DIGEST_VOICE: Optional[str] = None
     VOICE_DIGEST_PITCH: Optional[float] = None
     VOICE_DIGEST_SPEED: Optional[float] = None

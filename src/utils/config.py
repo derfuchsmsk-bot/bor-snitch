@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     LORE_BUCKET_NAME: str | None = None
     MAIN_CHAT_ID: int = -1003893798466
     ADMIN_PASSWORD: str = ""
+    ELEVENLABS_API_KEY: str = ""
 
     @property
     def effective_admin_password(self) -> str:
