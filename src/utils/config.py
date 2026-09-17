@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-in-production"
     LORE_BUCKET_NAME: str | None = None
     MAIN_CHAT_ID: int = -1003893798466
+    ADMIN_PASSWORD: str = ""
+
+    @property
+    def effective_admin_password(self) -> str:
+        return self.ADMIN_PASSWORD if self.ADMIN_PASSWORD else self.SECRET_TOKEN
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

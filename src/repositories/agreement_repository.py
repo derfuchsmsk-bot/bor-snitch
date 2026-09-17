@@ -88,6 +88,29 @@ class AgreementRepository:
         await self.update_agreement(chat_id, agreement_id, {"status": "disputed"})
         return True, "ok"
 
+    async def delete_agreement(self, chat_id: int, agreement_id: str) -> bool:
+        """Deletes an agreement by ID."""
+        try:
+            await self._get_agreements_ref(str(chat_id)).document(str(agreement_id)).delete()
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting agreement {agreement_id}: {e}")
+            return False
+
+    async def get_all_agreements(self, chat_id: int, limit: int = 50) -> List[dict]:
+        """Fetches recent agreements (any status) for the chat."""
+        coll_ref = self._get_agreements_ref(str(chat_id))
+        query = coll_ref.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
+        agreements = []
+        try:
+            async for doc in query.stream():
+                data = doc.to_dict()
+                data['id'] = doc.id
+                agreements.append(data)
+        except Exception as e:
+            logging.error(f"Error fetching all agreements: {e}")
+        return agreements
+
     async def get_last_agreement_check(self, chat_id: str) -> Optional[datetime]:
         """Gets the timestamp of the last agreement check."""
         doc = await self.db.collection("chats").document(chat_id).get()

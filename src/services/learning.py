@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from vertexai.generative_models import GenerativeModel
 from .db import db, get_logs_for_time_range
 from ..utils.game_config import config
-from ..utils.prompts import FEEDBACK_ANALYSIS_PROMPT
+from ..utils.prompts import get_feedback_analysis_prompt, FEEDBACK_ANALYSIS_PROMPT
 from ..models.ai import FeedbackAnalysisResult
 import json
 
@@ -74,7 +74,7 @@ class LearningService:
             }
 
             response = await model.generate_content_async(
-                contents=[FEEDBACK_ANALYSIS_PROMPT, prompt],
+                contents=[get_feedback_analysis_prompt(), prompt],
                 generation_config={
                     "response_mime_type": "application/json",
                     "response_schema": feedback_schema

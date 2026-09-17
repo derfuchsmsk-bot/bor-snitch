@@ -16,6 +16,9 @@ from src.bot.handlers import router
 from src.services.db import apply_weekly_amnesty, db
 from src.services.analysis_service import AnalysisService
 from src.services.lore_service import LoreService
+from src.services.config_service import ConfigService
+from src.services.prompt_service import PromptService
+from src.admin.router import router as admin_router
 from src.utils import messages
 
 # Configure logging
@@ -120,44 +123,53 @@ async def scheduled_lore_evolution():
     except Exception as e:
         logging.error(f"Error in scheduled lore evolution: {e}")
 
+async def sync_bot_commands():
+    """Dynamically synchronizes Telegram bot menu commands based on current GameConfig."""
+    try:
+        if config.BOT_DISABLED:
+            commands = []
+        else:
+            commands = [
+                types.BotCommand(command="status", description="Мое личное дело"),
+                types.BotCommand(command="stats", description="Топ Снитчей"),
+                types.BotCommand(command="rules", description="Кодекс Снитча"),
+                types.BotCommand(command="report", description="Донос (Reply)"),
+                types.BotCommand(command="casino", description="Испытать удачу"),
+                types.BotCommand(command="all", description="Позвать всех"),
+                types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
+                types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
+            ]
+            if config.ENABLE_AGREEMENTS:
+                commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
+                commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
+
+        await bot.set_my_commands(commands)
+        logging.info(f"Synchronized {len(commands)} bot commands with Telegram.")
+    except Exception as e:
+        logging.warning(f"Failed to synchronize bot commands: {e}")
+
 @app.on_event("startup")
 async def on_startup():
-    from src.utils.game_config import config
+    # Load dynamic configurations and prompts from Firestore
+    await ConfigService.load_config()
+    await PromptService.load_prompts()
+
+    # Synchronize bot commands
+    await sync_bot_commands()
     
-    # Base commands that should always be visible (or admin commands)
-    # We remove the regular commands so they don't show up in the menu when disabled
-    # However, setting commands dynamically based on state might require a different approach
-    # For now, let's keep the basic commands but maybe hide them if disabled, 
-    # but the simplest is just to leave them or let them return "bot is disabled"
-    # Actually, the user wants them GONE from the menu.
-    
-    if config.BOT_DISABLED:
-        # If disabled at startup, show absolutely NO commands
-        commands = []
-    else:
-        commands = [
-            types.BotCommand(command="status", description="Мое личное дело"),
-            types.BotCommand(command="stats", description="Топ Снитчей"),
-            types.BotCommand(command="rules", description="Кодекс Снитча"),
-            types.BotCommand(command="report", description="Донос (Reply)"),
-            types.BotCommand(command="casino", description="Испытать удачу"),
-            types.BotCommand(command="all", description="Позвать всех"),
-            types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
-            types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
-        ]
-        if config.ENABLE_AGREEMENTS:
-            commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
-            commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))
-            
-    await bot.set_my_commands(commands)
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
     scheduler.add_job(scheduled_lore_evolution, 'cron', day_of_week='mon', hour=0, minute=30)
     
     if config.ENABLE_AGREEMENTS:
         scheduler.add_job(scheduled_agreement_check, 'interval', minutes=30)
         
-    scheduler.start()
+    try:
+        scheduler.start()
+    except Exception as e:
+        logging.warning(f"Scheduler start issue: {e}")
 
+# Include routers
+app.include_router(admin_router)
 dp = Dispatcher()
 dp.include_router(router)
 

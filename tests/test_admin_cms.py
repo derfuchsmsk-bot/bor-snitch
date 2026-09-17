@@ -1,0 +1,251 @@
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from fastapi.testclient import TestClient
+
+from src.main import app
+from src.utils.config import settings
+from src.utils.game_config import config, DEFAULT_CONFIG_VALUES
+from src.services.prompt_service import PromptService, safe_substitute
+from src.admin.auth import verify_admin_password, create_admin_token, decode_admin_token, COOKIE_NAME
+
+
+client = TestClient(app)
+
+
+def test_game_config_defaults_and_updates():
+    config.reset_to_defaults()
+    assert config.POINTS_TOXICITY == 25
+    assert config.BOT_DISABLED is False
+    assert config.AI_MODEL_ANALYSIS == "gemini-3.8-flash"
+
+    # Test update from dict
+    config.update_from_dict({
+        "POINTS_TOXICITY": 45,
+        "BOT_DISABLED": True,
+        "CYNICAL_COMMENT_CHANCE": 0.05
+    })
+    assert config.POINTS_TOXICITY == 45
+    assert config.BOT_DISABLED is True
+    assert config.CYNICAL_COMMENT_CHANCE == 0.05
+
+    # Test serialization to dict
+    serialized = config.to_dict()
+    assert serialized["POINTS_TOXICITY"] == 45
+    assert serialized["BOT_DISABLED"] is True
+    assert serialized["RANK_PIERCED"] == [1000, None]
+
+    # Test reset
+    config.reset_to_defaults()
+    assert config.POINTS_TOXICITY == 25
+    assert config.BOT_DISABLED is False
+
+
+def test_safe_substitute():
+    tmpl = "Hello {name}, your score is {score}! Keep {char} safe."
+    res = safe_substitute(tmpl, {"name": "Alice", "score": 100, "char": "{"})
+    assert res == "Hello Alice, your score is 100! Keep { safe."
+
+    # Unknown braces should remain untouched without raising KeyError
+    tmpl_unknown = "Some {unknown_var} test."
+    res_unknown = safe_substitute(tmpl_unknown, {"other": "val"})
+    assert res_unknown == "Some {unknown_var} test."
+
+
+def test_prompt_service_formatting_and_reset():
+    PromptService.reset_to_defaults = MagicMock()
+    prompts_info = PromptService.get_all_prompts_info()
+    assert len(prompts_info) >= 6
+
+    # Test system prompt format
+    sys_prompt = PromptService.format_system_prompt(
+        lore_json="{}",
+        verified_facts="Fact 1",
+        current_context="Context 1"
+    )
+    assert "Снитч-бот" in sys_prompt
+    assert "Fact 1" in sys_prompt
+
+    # Test report validation format
+    rep_prompt = PromptService.format_report_validation_prompt()
+    assert "Toxicity" in rep_prompt
+
+
+def test_admin_auth_functions():
+    # settings.effective_admin_password is set to "test-admin-password" in conftest
+    assert verify_admin_password("test-admin-password") is True
+    assert verify_admin_password("wrong-password") is False
+    assert verify_admin_password("   ") is False
+
+    # Test JWT token creation and decoding
+    token = create_admin_token()
+    payload = decode_admin_token(token)
+    assert payload["sub"] == "admin"
+    assert "exp" in payload
+
+
+def test_admin_ui_serving():
+    response = client.get("/admin")
+    assert response.status_code == 200
+    assert "Bor Snitch CMS" in response.text
+    assert "<!DOCTYPE html>" in response.text
+
+    response_login = client.get("/admin/login")
+    assert response_login.status_code == 200
+
+
+def test_unauthenticated_api_access_blocked():
+    # Accessing config without auth must return 401
+    resp = client.get("/api/admin/config")
+    assert resp.status_code == 401
+
+    resp = client.get("/api/admin/prompts")
+    assert resp.status_code == 401
+
+    resp = client.get("/api/admin/me")
+    assert resp.status_code == 401
+
+
+def test_admin_login_and_logout():
+    # Wrong password
+    resp = client.post("/api/admin/login", json={"password": "incorrect-password"})
+    assert resp.status_code == 401
+
+    # Correct password
+    resp = client.post("/api/admin/login", json={"password": settings.effective_admin_password})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "token" in data
+    assert COOKIE_NAME in resp.cookies
+
+    # Test /api/admin/me with cookie
+    me_resp = client.get("/api/admin/me", cookies=resp.cookies)
+    assert me_resp.status_code == 200
+    assert me_resp.json()["authenticated"] is True
+
+    # Test logout
+    logout_resp = client.post("/api/admin/logout")
+    assert logout_resp.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_admin_config_api():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.services.config_service.db") as mock_db, \
+         patch("src.main.sync_bot_commands", new_callable=AsyncMock):
+        mock_doc = MagicMock()
+        mock_doc.set = AsyncMock()
+        mock_coll = MagicMock()
+        mock_coll.document.return_value = mock_doc
+        mock_db.collection.return_value = mock_coll
+
+        # GET config
+        resp = client.get("/api/admin/config", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "config" in data
+        assert "defaults" in data
+
+        # PUT config
+        put_resp = client.put("/api/admin/config", json={
+            "POINTS_TOXICITY": 33,
+            "BOT_DISABLED": True
+        }, headers=headers)
+        assert put_resp.status_code == 200
+        assert put_resp.json()["config"]["POINTS_TOXICITY"] == 33
+        assert config.POINTS_TOXICITY == 33
+        assert config.BOT_DISABLED is True
+
+        # Reset config back
+        config.reset_to_defaults()
+
+
+@pytest.mark.anyio
+async def test_admin_prompts_api():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.services.prompt_service.db") as mock_db:
+        mock_doc = MagicMock()
+        mock_doc.set = AsyncMock()
+        mock_coll = MagicMock()
+        mock_coll.document.return_value = mock_doc
+        mock_db.collection.return_value = mock_coll
+
+        # GET all prompts
+        resp = client.get("/api/admin/prompts", headers=headers)
+        assert resp.status_code == 200
+        prompts = resp.json()["prompts"]
+        assert len(prompts) >= 6
+
+        # GET single prompt
+        resp_single = client.get("/api/admin/prompts/report_validation_prompt", headers=headers)
+        assert resp_single.status_code == 200
+        assert resp_single.json()["key"] == "report_validation_prompt"
+
+        # PUT single prompt
+        custom_template = "Custom report validation: {points_toxicity}"
+        put_resp = client.put(
+            "/api/admin/prompts/report_validation_prompt",
+            json={"template": custom_template},
+            headers=headers
+        )
+        assert put_resp.status_code == 200
+        assert PromptService.get_template("report_validation_prompt") == custom_template
+
+        # POST reset single prompt
+        reset_resp = client.post(
+            "/api/admin/prompts/report_validation_prompt/reset",
+            headers=headers
+        )
+        assert reset_resp.status_code == 200
+        assert PromptService.get_template("report_validation_prompt") != custom_template
+
+
+@pytest.mark.anyio
+async def test_admin_chats_and_users_api():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.repositories.user_repository.user_repository.get_chat_users", new_callable=AsyncMock) as mock_get_users, \
+         patch("src.repositories.user_repository.user_repository.add_points", new_callable=AsyncMock) as mock_add_points, \
+         patch("src.repositories.user_repository.user_repository.set_user_points", new_callable=AsyncMock) as mock_set_points:
+
+        mock_get_users.return_value = ([
+            {
+                "user_id": "111",
+                "username": "snitcher",
+                "full_name": "Snitcher Bob",
+                "stats": {"total_points": 75, "current_rank": "Шнырь 🧹"}
+            }
+        ], None)
+
+        mock_add_points.return_value = 100
+        mock_set_points.return_value = {"total_points": 120, "current_rank": "Шнырь 🧹"}
+
+        # GET chat users
+        resp = client.get(f"/api/admin/chats/{settings.MAIN_CHAT_ID}/users", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 1
+        assert data["users"][0]["user_id"] == "111"
+
+        # POST adjust points by delta
+        delta_resp = client.post(
+            f"/api/admin/chats/{settings.MAIN_CHAT_ID}/users/111/points",
+            json={"points_delta": 25, "reason": "Test penalty"},
+            headers=headers
+        )
+        assert delta_resp.status_code == 200
+        assert delta_resp.json()["total_points"] == 100
+
+        # POST set exact points
+        exact_resp = client.post(
+            f"/api/admin/chats/{settings.MAIN_CHAT_ID}/users/111/points",
+            json={"exact_points": 120},
+            headers=headers
+        )
+        assert exact_resp.status_code == 200
+        assert exact_resp.json()["total_points"] == 120

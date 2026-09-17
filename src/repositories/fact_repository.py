@@ -57,4 +57,16 @@ class FactRepository:
             logging.error(f"Error removing fact: {e}")
             return 0
 
+    async def delete_fact(self, chat_id: int, fact_id: str) -> bool:
+        """
+        Deletes a specific verified fact by document ID.
+        """
+        try:
+            ref = self._get_facts_ref(str(chat_id)).document(str(fact_id))
+            await ref.delete()
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting fact {fact_id}: {e}")
+            return False
+
 fact_repository = FactRepository()

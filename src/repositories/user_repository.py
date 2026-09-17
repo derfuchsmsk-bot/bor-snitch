@@ -272,4 +272,68 @@ class UserRepository:
             last_doc = doc
         return users, last_doc
 
+    async def set_user_points(self, chat_id: int, user_id: int, points: int) -> dict:
+        """Sets the exact points for a user and re-calculates rank."""
+        points = max(0, int(points))
+        rank = self.calculate_rank(points)
+        user_ref = self._get_user_ref(chat_id, user_id)
+        await user_ref.set({
+            "total_points": points,
+            "current_rank": rank,
+            "season_id": "global"
+        }, merge=True)
+        return {"total_points": points, "current_rank": rank}
+
+    async def update_user_achievements(self, chat_id: int, user_id: int, achievements: list) -> list:
+        """Updates the list of achievements for a user."""
+        user_ref = self._get_user_ref(chat_id, user_id)
+        await user_ref.set({"achievements": achievements}, merge=True)
+        return achievements
+
+    async def get_points_ledger(self, chat_id: int, limit: int = 50) -> list:
+        """Fetches recent points ledger events for a chat."""
+        chat_id_str = str(chat_id)
+        ledger_ref = self.db.collection("chats").document(chat_id_str).collection("points_ledger")
+        query = ledger_ref.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
+        events = []
+        try:
+            async for doc in query.stream():
+                d = doc.to_dict()
+                d["id"] = doc.id
+                events.append(d)
+        except Exception as e:
+            logging.error(f"Error fetching points ledger: {e}")
+        return events
+
+    async def revert_point_event(self, chat_id: int, event_id: str) -> dict:
+        """
+        Reverts an existing point event: deducts the points delta from user and deletes the event.
+        """
+        chat_id_str = str(chat_id)
+        ledger_ref = self._get_points_ledger_ref(chat_id_str, event_id)
+        ledger_doc = await ledger_ref.get()
+        if not ledger_doc.exists:
+            return {"success": False, "error": "Event not found"}
+
+        event_data = ledger_doc.to_dict()
+        user_id = event_data.get("user_id")
+        delta = event_data.get("points_delta", 0)
+
+        # Reverse the delta
+        reverse_delta = -delta
+        if user_id:
+            user_ref = self._get_user_ref(chat_id_str, user_id)
+            user_doc = await user_ref.get()
+            if user_doc.exists:
+                current_points = user_doc.to_dict().get("total_points", 0)
+                new_points = max(0, current_points + reverse_delta)
+                new_rank = self.calculate_rank(new_points)
+                await user_ref.update({
+                    "total_points": new_points,
+                    "current_rank": new_rank
+                })
+
+        await ledger_ref.delete()
+        return {"success": True, "reverted_delta": delta, "user_id": user_id}
+
 user_repository = UserRepository()

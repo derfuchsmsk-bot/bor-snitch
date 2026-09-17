@@ -13,6 +13,8 @@ from src.utils.prompts import (
     get_system_prompt,
     get_report_validation_prompt,
     get_cynical_comment_prompt,
+    get_memory_summarization_prompt,
+    get_fact_validation_prompt,
     MEMORY_SUMMARIZATION_PROMPT,
     FACT_VALIDATION_PROMPT
 )
@@ -439,7 +441,7 @@ async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummar
         }
 
         response = await model.generate_content_async(
-            contents=[MEMORY_SUMMARIZATION_PROMPT, prompt],
+            contents=[get_memory_summarization_prompt(), prompt],
             generation_config={
                 "response_mime_type": "application/json",
                 "response_schema": memory_schema
@@ -570,7 +572,7 @@ async def validate_fact(text: str) -> FactValidationResult:
         }
 
         response = await model.generate_content_async(
-            contents=[FACT_VALIDATION_PROMPT, prompt],
+            contents=[get_fact_validation_prompt(), prompt],
             generation_config={
                 "response_mime_type": "application/json",
                 "response_schema": fact_schema
