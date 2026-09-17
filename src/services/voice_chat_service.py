@@ -46,6 +46,8 @@ class VoiceChatService:
     _active_calls = {}          # chat_id -> asyncio.Task (watchdog)
     _listener_tasks = {}        # chat_id -> asyncio.Task (audio listener)
     _last_activity = {}         # chat_id -> float (timestamp)
+    _last_bot_reply_time = {}   # chat_id -> float (timestamp of last bot speech)
+    _is_speaking = {}           # chat_id -> bool (lock preventing bot from interrupting itself or hearing itself)
     _lock = asyncio.Lock()
 
     @classmethod
@@ -109,26 +111,41 @@ class VoiceChatService:
 
     @classmethod
     async def play_phrase_in_call(cls, chat_id: int, phrase: str):
-        """Synthesizes text via ElevenLabs/TTS and streams it into the Telegram voice call."""
+        """
+        Synthesizes text via ElevenLabs/TTS and smoothly streams it into the call,
+        locking playback to prevent speech stuttering and echo feedback.
+        """
         from pytgcalls.types import MediaStream
 
+        cid = int(chat_id)
+        cls._is_speaking[cid] = True
         pytgcalls = await cls.ensure_started()
-        audio_bytes, audio_fmt = await TTSService.synthesize_speech(phrase)
-
-        suffix = f".{audio_fmt}"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            tmp_file.write(audio_bytes)
-            tmp_path = tmp_file.name
 
         try:
-            cls.record_activity(chat_id)
-            await pytgcalls.play(int(chat_id), MediaStream(tmp_path))
-            logger.info(f"Streaming phrase into call {chat_id}: '{phrase[:40]}...'")
+            audio_bytes, audio_fmt = await TTSService.synthesize_speech(phrase)
+
+            suffix = f".{audio_fmt}"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                tmp_file.write(audio_bytes)
+                tmp_path = tmp_file.name
+
+            cls.record_activity(cid)
+            await pytgcalls.play(cid, MediaStream(tmp_path))
+            logger.info(f"Streaming phrase into call {cid}: '{phrase[:40]}...'")
+
+            # Calculate natural duration: MP3 ~16KB/s, give audio time to play fully
+            duration = max(3.0, len(audio_bytes) / 16000.0 + 1.2)
+            await asyncio.sleep(duration)
+        except Exception as e:
+            logger.error(f"Error playing phrase in call {cid}: {e}")
         finally:
-            asyncio.create_task(cls._delayed_file_cleanup(tmp_path, delay=25))
+            cls._last_bot_reply_time[cid] = time.time()
+            cls._is_speaking[cid] = False
+            if 'tmp_path' in locals():
+                asyncio.create_task(cls._delayed_file_cleanup(tmp_path, delay=15))
 
     @classmethod
-    async def _delayed_file_cleanup(cls, file_path: str, delay: int = 25):
+    async def _delayed_file_cleanup(cls, file_path: str, delay: int = 15):
         await asyncio.sleep(delay)
         try:
             if os.path.exists(file_path):
@@ -142,16 +159,17 @@ class VoiceChatService:
         When someone writes in the chat while the bot is in a voice call,
         Gemini generates a Kizaru reply and speaks it directly into the voice call.
         """
-        if not cls.is_in_call(chat_id):
+        cid = int(chat_id)
+        if not cls.is_in_call(cid) or cls._is_speaking.get(cid, False):
             return
 
-        cls.record_activity(chat_id)
+        cls.record_activity(cid)
 
         prompt = f"""
 Ты — Снитч-Бот в голосовом чате Telegram в образе рэпера Кизару (Олег Нечипоренко).
 Пользователь {username} только что написал в чат: "{user_text}".
 ИНСТРУКЦИЯ:
-Ответь ему в голосовой чат прямо сейчас дерзко, на чилле и по фактам на сленге Кизару (1-2 коротких предложения).
+Ответь ему в голосовой чат прямо сейчас дерзко, на чилле и по фактам на сленге Кизару (1 короткое хлесткое предложение).
 Отвечай СТРОГО на русском языке, без смайликов и списков (для чтения вслух в микрофон).
 """
         try:
@@ -159,13 +177,13 @@ class VoiceChatService:
             resp = await model.generate_content_async(
                 contents=[prompt],
                 safety_settings=VOICE_SAFETY_SETTINGS,
-                generation_config={"temperature": 0.85, "max_output_tokens": 150}
+                generation_config={"temperature": 0.85, "max_output_tokens": 120}
             )
             reply = resp.text.strip() if resp and resp.text else ""
             if reply:
                 reply_cleaned = TTSService.clean_text_for_speech(reply)
-                logger.info(f"Speaking chat reply into voice call {chat_id}: {reply_cleaned}")
-                await cls.play_phrase_in_call(chat_id, reply_cleaned)
+                logger.info(f"Speaking chat reply into voice call {cid}: {reply_cleaned}")
+                await cls.play_phrase_in_call(cid, reply_cleaned)
         except Exception as e:
             logger.error(f"Error speaking text response in call: {e}")
 
@@ -182,14 +200,14 @@ class VoiceChatService:
         phrase = random.choice(KIZARU_GREETINGS)
         cls.record_activity(cid)
 
-        # Connect and play greeting
-        await cls.play_phrase_in_call(cid, phrase)
-
         # Cancel any previous tasks if running
         if cid in cls._active_calls:
             cls._active_calls[cid].cancel()
         if cid in cls._listener_tasks:
             cls._listener_tasks[cid].cancel()
+
+        # Connect and play greeting
+        await cls.play_phrase_in_call(cid, phrase)
 
         # Start watchdog loop and audio listener loop
         cls._active_calls[cid] = asyncio.create_task(cls._inactivity_watchdog(cid))
@@ -202,73 +220,88 @@ class VoiceChatService:
     async def _voice_listener_loop(cls, chat_id: int):
         """
         Captures incoming live voice audio from participants in the call,
-        converts PCM to WAV, passes it to Gemini, and triggers Kizaru speech replies.
+        cleans noise and echo, and triggers smart Kizaru speech replies.
         """
         cid = int(chat_id)
         record_file = os.path.join(tempfile.gettempdir(), f"voice_incoming_{cid}.raw")
         from pytgcalls.types import RecordStream
 
-        # Give greeting 6 seconds to play before engaging recording
-        await asyncio.sleep(6)
+        # Wait 3 seconds after greeting before opening listener
+        await asyncio.sleep(3)
 
         try:
             pytgcalls = await cls.ensure_started()
             try:
                 await pytgcalls.record(cid, RecordStream(audio=record_file))
-                logger.info(f"Live microphone recording started for chat {cid} -> {record_file}")
+                logger.info(f"Live microphone recording started for chat {cid}")
             except Exception as e:
                 logger.warning(f"Could not initialize PyTgCalls recording: {e}")
                 return
 
             while cid in cls._active_calls:
-                await asyncio.sleep(6)
+                await asyncio.sleep(4)
+
+                # If bot is currently speaking, discard buffer and don't listen to yourself
+                if cls._is_speaking.get(cid, False):
+                    if os.path.exists(record_file):
+                        try:
+                            open(record_file, "wb").close()
+                        except Exception:
+                            pass
+                    continue
 
                 if not os.path.exists(record_file):
                     continue
 
                 size = os.path.getsize(record_file)
-                # If participants spoke (at least ~60KB of 48kHz audio)
-                if size > 60_000:
-                    try:
-                        with open(record_file, "rb") as f:
-                            raw_pcm = f.read()
+                # Need at least ~250KB of 48kHz 16bit audio (~1.3s of real vocal speech, not clicks/breaths)
+                if size < 250_000:
+                    continue
 
-                        # Truncate file so we only analyze fresh audio next time
-                        open(record_file, "wb").close()
+                # Enforce minimum cooldown between voice replies (12 seconds)
+                if (time.time() - cls._last_bot_reply_time.get(cid, 0)) < 12.0:
+                    continue
 
-                        wav_bytes = cls.pcm_to_wav(raw_pcm)
-                        cls.record_activity(cid)
+                try:
+                    with open(record_file, "rb") as f:
+                        raw_pcm = f.read()
 
-                        # Send audio chunk to Gemini for comprehension
-                        audio_part = Part.from_data(wav_bytes, mime_type="audio/wav")
-                        prompt = """
+                    # Flush buffer
+                    open(record_file, "wb").close()
+
+                    wav_bytes = cls.pcm_to_wav(raw_pcm)
+                    cls.record_activity(cid)
+
+                    # Send audio chunk to Gemini for comprehension
+                    audio_part = Part.from_data(wav_bytes, mime_type="audio/wav")
+                    prompt = """
 Ты — Снитч-Бот в голосовом чате Telegram в образе рэпера Кизару (Олег Нечипоренко).
 Послушай аудиозапись того, что только что сказали пацаны в войс-чате.
-ИНСТРУКЦИЯ:
-1. Если кто-то обращается к тебе (Снитч, Кизару, Бот, Олег, эй) ИЛИ кто-то спорит, ноет или выдает кринж — выдай дерзкий, смешной ответ на сленге Кизару (1-2 коротких предложения).
-2. Если в аудио тишина, неразборчивый шум или обычный фоновый треп без обращения к тебе — ответь СТРОГО ОДНИМ СЛОВОМ: IGNORE.
-3. Текст пиши СТРОГО НА РУССКОМ для чтения вслух.
+КРИТИЧЕСКИ ВАЖНО:
+1. Если в аудио тишина, фоновый шум, дыхание, шорохи или обычный разговор парней без прямого обращения к тебе — ответь СТРОГО ОДНИМ СЛОВОМ: IGNORE.
+2. Отвечай ТОЛЬКО если они обращаются к тебе (Снитч, Кизару, Бот, Олег), задают вопрос или кто-то откровенно ноет/спорит.
+3. Твой ответ: 1 короткая хлесткая фраза на сленге Кизару (Барселона, курите бамбук, не нагоняй воздух).
+4. Пиши СТРОГО НА РУССКОМ для чтения вслух.
 """
-                        model = GenerativeModel(config.AI_MODEL_ANALYSIS)
-                        resp = await model.generate_content_async(
-                            contents=[prompt, audio_part],
-                            safety_settings=VOICE_SAFETY_SETTINGS,
-                            generation_config={"temperature": 0.8, "max_output_tokens": 120}
-                        )
-                        reply = resp.text.strip() if resp and resp.text else ""
+                    model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+                    resp = await model.generate_content_async(
+                        contents=[prompt, audio_part],
+                        safety_settings=VOICE_SAFETY_SETTINGS,
+                        generation_config={"temperature": 0.75, "max_output_tokens": 100}
+                    )
+                    reply = resp.text.strip() if resp and resp.text else ""
 
-                        if reply and not reply.upper().startswith("IGNORE"):
-                            reply_cleaned = TTSService.clean_text_for_speech(reply)
-                            logger.info(f"Kizaru responding to heard voice in call {cid}: '{reply_cleaned}'")
-                            await cls.play_phrase_in_call(cid, reply_cleaned)
-                            # Wait for phrase to finish streaming, then resume recording
-                            await asyncio.sleep(6)
-                            try:
-                                await pytgcalls.record(cid, RecordStream(audio=record_file))
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        logger.debug(f"Audio chunk evaluation skipped: {e}")
+                    if reply and not reply.upper().startswith("IGNORE"):
+                        reply_cleaned = TTSService.clean_text_for_speech(reply)
+                        logger.info(f"Kizaru responding to voice in call {cid}: '{reply_cleaned}'")
+                        await cls.play_phrase_in_call(cid, reply_cleaned)
+                        # Re-attach recording after playback
+                        try:
+                            await pytgcalls.record(cid, RecordStream(audio=record_file))
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.debug(f"Audio chunk evaluation skipped: {e}")
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -289,6 +322,11 @@ class VoiceChatService:
         try:
             while True:
                 await asyncio.sleep(5)
+                # If bot is currently speaking, don't count it as inactivity
+                if cls._is_speaking.get(cid, False):
+                    cls.record_activity(cid)
+                    continue
+
                 last_act = cls._last_activity.get(cid, time.time())
                 elapsed = time.time() - last_act
 
@@ -297,7 +335,6 @@ class VoiceChatService:
                     exit_phrase = random.choice(KIZARU_INACTIVITY_EXITS)
                     try:
                         await cls.play_phrase_in_call(cid, exit_phrase)
-                        await asyncio.sleep(5)
                     except Exception as e:
                         logger.warning(f"Could not play exit phrase: {e}")
 
@@ -330,7 +367,6 @@ class VoiceChatService:
             exit_phrase = random.choice(KIZARU_LEAVE_EXITS)
             try:
                 await cls.play_phrase_in_call(cid, exit_phrase)
-                await asyncio.sleep(4)
             except Exception as e:
                 logger.warning(f"Could not play manual leave phrase: {e}")
 
