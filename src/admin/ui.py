@@ -878,6 +878,17 @@ def get_admin_html() -> str:
       defaults: {}
     };
 
+    // --- HTML Sanitization Helper to Prevent XSS ---
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     // --- Helpers: Toast Notifications ---
     function showToast(message, type = 'success') {
       const container = document.getElementById('toast-container');
@@ -886,7 +897,7 @@ def get_admin_html() -> str:
         ? 'bg-emerald-950/90 border-emerald-500 text-emerald-200' 
         : 'bg-rose-950/90 border-rose-500 text-rose-200';
       toast.className = `pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl border shadow-xl text-xs font-medium transition-all duration-300 opacity-0 translate-y-2 ${colorClass}`;
-      toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠️'}</span><span>${message}</span>`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠️'}</span><span>${escapeHtml(message)}</span>`;
       container.appendChild(toast);
       requestAnimationFrame(() => {
         toast.classList.remove('opacity-0', 'translate-y-2');
@@ -1291,8 +1302,8 @@ def get_admin_html() -> str:
         tr.className = 'hover:bg-slate-800/40 transition';
         tr.innerHTML = `
           <td class="py-3 px-4">
-            <div class="font-bold text-white text-xs">${u.full_name || username}</div>
-            <div class="text-[10px] text-slate-400 font-mono">${username} <span class="text-slate-600">(${u.user_id})</span></div>
+            <div class="font-bold text-white text-xs">${escapeHtml(u.full_name || username)}</div>
+            <div class="text-[10px] text-slate-400 font-mono">${escapeHtml(username)} <span class="text-slate-600">(${escapeHtml(u.user_id)})</span></div>
           </td>
           <td class="py-3 px-4 text-center">
             <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${points > 200 ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-300'}">
@@ -1300,24 +1311,24 @@ def get_admin_html() -> str:
             </span>
           </td>
           <td class="py-3 px-4">
-            <span class="text-xs">${rank}</span>
+            <span class="text-xs">${escapeHtml(rank)}</span>
           </td>
           <td class="py-3 px-4">
             <div class="flex flex-wrap gap-1 max-w-xs">
               ${achievements.length > 0 
-                ? achievements.map(a => `<span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px] border border-amber-500/20 truncate">${typeof a === 'string' ? a : (a.title || 'Ачивка')}</span>`).join('')
+                ? achievements.map(a => `<span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px] border border-amber-500/20 truncate">${escapeHtml(typeof a === 'string' ? a : (a.title || 'Ачивка'))}</span>`).join('')
                 : '<span class="text-slate-600 italic text-[10px]">Нет</span>'}
             </div>
           </td>
           <td class="py-3 px-4 text-right">
             <div class="inline-flex items-center gap-1">
-              <button onclick="quickAdjustPoints('${u.user_id}', 25)" title="+25 очков (Токсичность)"
+              <button onclick="quickAdjustPoints('${escapeHtml(u.user_id)}', 25)" title="+25 очков (Токсичность)"
                       class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400 font-mono text-[11px] font-bold">+25</button>
-              <button onclick="quickAdjustPoints('${u.user_id}', -25)" title="-25 очков"
+              <button onclick="quickAdjustPoints('${escapeHtml(u.user_id)}', -25)" title="-25 очков"
                       class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 font-mono text-[11px] font-bold">-25</button>
-              <button onclick="openPointsModal('${u.user_id}', '${username.replace(/'/g, "\\'")}', ${points})" title="Кастомные очки"
+              <button onclick="openPointsModal('${escapeHtml(u.user_id)}')" title="Кастомные очки"
                       class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">✏️</button>
-              <button onclick="openAchievementsModal('${u.user_id}', '${username.replace(/'/g, "\\'")}', ${encodeURIComponent(JSON.stringify(achievements))})" title="Ачивки"
+              <button onclick="openAchievementsModal('${escapeHtml(u.user_id)}')" title="Ачивки"
                       class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs">🏅</button>
             </div>
           </td>
@@ -1353,8 +1364,12 @@ def get_admin_html() -> str:
       }
     }
 
-    function openPointsModal(userId, username, currentPoints) {
+    function openPointsModal(userId) {
+      const u = state.users.find(x => String(x.user_id) === String(userId));
+      if (!u) return;
       state.selectedUserForPoints = userId;
+      const username = u.username ? `@${u.username}` : (u.full_name || `ID ${u.user_id}`);
+      const currentPoints = (u.stats && u.stats.total_points) || 0;
       document.getElementById('modal-points-user').textContent = `${username} (Текущие: ${currentPoints})`;
       document.getElementById('modal-points-delta').value = '';
       document.getElementById('modal-points-exact').value = '';
@@ -1389,13 +1404,17 @@ def get_admin_html() -> str:
       }
     }
 
-    function openAchievementsModal(userId, username, achJsonEncoded) {
+    function openAchievementsModal(userId) {
+      const u = state.users.find(x => String(x.user_id) === String(userId));
+      if (!u) return;
       state.selectedUserForAchievements = userId;
-      const achs = JSON.parse(decodeURIComponent(achJsonEncoded));
+      const username = u.username ? `@${u.username}` : (u.full_name || `ID ${u.user_id}`);
+      const achs = (u.stats && u.stats.achievements) || [];
       document.getElementById('modal-achievements-user').textContent = username;
       const textLines = achs.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join('\\n');
       document.getElementById('modal-achievements-text').value = textLines;
       openModal('modal-achievements');
+    }
     }
 
     async function submitAchievementsUpdate() {
@@ -1439,18 +1458,18 @@ def get_admin_html() -> str:
           const tr = document.createElement('tr');
           tr.className = 'hover:bg-slate-800/40';
           tr.innerHTML = `
-            <td class="py-2.5 px-3 font-mono text-[10px] text-slate-400">${ev.week_key || '—'}</td>
-            <td class="py-2.5 px-3 font-mono text-[11px]">${ev.user_id}</td>
+            <td class="py-2.5 px-3 font-mono text-[10px] text-slate-400">${escapeHtml(ev.week_key || '—')}</td>
+            <td class="py-2.5 px-3 font-mono text-[11px]">${escapeHtml(ev.user_id)}</td>
             <td class="py-2.5 px-3 text-center font-mono font-bold ${delta > 0 ? 'text-rose-400' : 'text-emerald-400'}">${delta > 0 ? '+' : ''}${delta}</td>
-            <td class="py-2.5 px-3 text-[11px]"><span class="text-slate-400">${ev.event_type || ''}:</span> ${ev.reason || ''}</td>
+            <td class="py-2.5 px-3 text-[11px]"><span class="text-slate-400">${escapeHtml(ev.event_type || '')}:</span> ${escapeHtml(ev.reason || '')}</td>
             <td class="py-2.5 px-3 text-right">
-              <button onclick="revertLedgerEvent('${ev.id}')" class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 text-[10px] font-medium">Откатить</button>
+              <button onclick="revertLedgerEvent('${escapeHtml(ev.id)}')" class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 text-[10px] font-medium">Откатить</button>
             </td>
           `;
           tbody.appendChild(tr);
         });
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-400">${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-400">${escapeHtml(err.message)}</td></tr>`;
       }
     }
 
@@ -1490,17 +1509,17 @@ def get_admin_html() -> str:
           div.className = 'p-3 rounded-xl bg-[#162032] border border-slate-800 flex items-start justify-between gap-3 text-xs';
           div.innerHTML = `
             <div class="space-y-1">
-              <div class="text-slate-200 font-medium">${f.text}</div>
-              <div class="text-[10px] text-slate-500 font-mono">${f.username ? '@' + f.username : ''} ${f.added_by ? '• ' + f.added_by : ''}</div>
+              <div class="text-slate-200 font-medium">${escapeHtml(f.text)}</div>
+              <div class="text-[10px] text-slate-500 font-mono">${f.username ? '@' + escapeHtml(f.username) : ''} ${f.added_by ? '• ' + escapeHtml(f.added_by) : ''}</div>
             </div>
-            <button onclick="deleteFact('${f.id}')" title="Удалить факт" class="text-slate-500 hover:text-rose-400 p-1 transition">
+            <button onclick="deleteFact('${escapeHtml(f.id)}')" title="Удалить факт" class="text-slate-500 hover:text-rose-400 p-1 transition">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </button>
           `;
           container.appendChild(div);
         });
       } catch (err) {
-        container.innerHTML = `<div class="text-xs text-rose-400 py-4 text-center">Ошибка: ${err.message}</div>`;
+        container.innerHTML = `<div class="text-xs text-rose-400 py-4 text-center">Ошибка: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -1597,22 +1616,22 @@ def get_admin_html() -> str:
           const tr = document.createElement('tr');
           tr.className = 'hover:bg-slate-800/40 transition';
           tr.innerHTML = `
-            <td class="py-3 px-4 font-medium text-white">${ag.text || '—'}</td>
-            <td class="py-3 px-4 font-mono text-[11px] text-slate-300">${users}</td>
+            <td class="py-3 px-4 font-medium text-white">${escapeHtml(ag.text || '—')}</td>
+            <td class="py-3 px-4 font-mono text-[11px] text-slate-300">${escapeHtml(users)}</td>
             <td class="py-3 px-4 text-center">${statusBadge}</td>
-            <td class="py-3 px-4 text-[10px] text-slate-400 font-mono">${ag.expires_at ? new Date(ag.expires_at).toLocaleString() : '—'}</td>
+            <td class="py-3 px-4 text-[10px] text-slate-400 font-mono">${ag.expires_at ? escapeHtml(new Date(ag.expires_at).toLocaleString()) : '—'}</td>
             <td class="py-3 px-4 text-right">
               <div class="inline-flex items-center gap-1">
-                <button onclick="setAgreementStatus('${ag.id}', 'fulfilled')" title="Исполнена" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px]">✓</button>
-                <button onclick="setAgreementStatus('${ag.id}', 'disputed')" title="Оспорить" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px]">⚠️</button>
-                <button onclick="deleteAgreement('${ag.id}')" title="Удалить" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400 text-[10px]">✕</button>
+                <button onclick="setAgreementStatus('${escapeHtml(ag.id)}', 'fulfilled')" title="Исполнена" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px]">✓</button>
+                <button onclick="setAgreementStatus('${escapeHtml(ag.id)}', 'disputed')" title="Оспорить" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px]">⚠️</button>
+                <button onclick="deleteAgreement('${escapeHtml(ag.id)}')" title="Удалить" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400 text-[10px]">✕</button>
               </div>
             </td>
           `;
           tbody.appendChild(tr);
         });
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-400">Ошибка: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-400">Ошибка: ${escapeHtml(err.message)}</td></tr>`;
       }
     }
 

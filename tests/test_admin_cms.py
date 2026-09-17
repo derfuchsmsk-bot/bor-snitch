@@ -249,3 +249,34 @@ async def test_admin_chats_and_users_api():
         )
         assert exact_resp.status_code == 200
         assert exact_resp.json()["total_points"] == 120
+
+
+def test_config_validation_rules():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Reject gamble win chance > 1.0
+    resp_invalid_chance = client.put(
+        "/api/admin/config",
+        json={"GAMBLE_WIN_CHANCE": 1.5},
+        headers=headers
+    )
+    assert resp_invalid_chance.status_code == 422
+
+    # Reject negative points
+    resp_negative_points = client.put(
+        "/api/admin/config",
+        json={"POINTS_TOXICITY": -10},
+        headers=headers
+    )
+    assert resp_negative_points.status_code == 422
+
+
+def test_admin_ui_contains_xss_protection():
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "function escapeHtml(str)" in resp.text
+    assert "escapeHtml(u.full_name || username)" in resp.text
+    assert "escapeHtml(f.text)" in resp.text
+    assert "escapeHtml(ag.text || '—')" in resp.text
+

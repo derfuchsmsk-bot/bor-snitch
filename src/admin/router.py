@@ -5,9 +5,11 @@ from pydantic import BaseModel, Field
 
 from src.utils.config import settings
 from src.utils.game_config import config, DEFAULT_CONFIG_VALUES
+from src.utils.limiter import limiter
 from src.services.config_service import ConfigService
 from src.services.prompt_service import PromptService, PROMPT_METADATA
 from src.services.lore_service import LoreService
+from src.services.fact_service import FactService
 from src.repositories.user_repository import user_repository
 from src.repositories.fact_repository import fact_repository
 from src.repositories.agreement_repository import agreement_repository
@@ -43,23 +45,23 @@ class LoginRequest(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     BOT_DISABLED: Optional[bool] = None
     ACCOUNTING_EPOCH_DATE: Optional[str] = None
-    POINTS_WHINING: Optional[int] = None
-    POINTS_STIFFNESS: Optional[int] = None
-    POINTS_TOXICITY: Optional[int] = None
-    POINTS_SNITCHING: Optional[int] = None
-    POINTS_AFK_BASE: Optional[int] = None
-    POINTS_AFK_DAILY: Optional[int] = None
-    GAMBLE_WIN_CHANCE: Optional[float] = None
-    GAMBLE_WIN_POINTS: Optional[int] = None
-    GAMBLE_LOSS_POINTS: Optional[int] = None
-    FALSE_REPORT_LIMIT: Optional[int] = None
-    FALSE_REPORT_PENALTY: Optional[int] = None
-    IGNORE_DAYS_BEFORE_PENALTY: Optional[int] = None
-    CYNICAL_COMMENT_CHANCE: Optional[float] = None
-    CYNICAL_COMMENT_COOLDOWN_SECONDS: Optional[int] = None
+    POINTS_WHINING: Optional[int] = Field(None, ge=0, le=1000)
+    POINTS_STIFFNESS: Optional[int] = Field(None, ge=0, le=1000)
+    POINTS_TOXICITY: Optional[int] = Field(None, ge=0, le=1000)
+    POINTS_SNITCHING: Optional[int] = Field(None, ge=0, le=1000)
+    POINTS_AFK_BASE: Optional[int] = Field(None, ge=0, le=1000)
+    POINTS_AFK_DAILY: Optional[int] = Field(None, ge=0, le=1000)
+    GAMBLE_WIN_CHANCE: Optional[float] = Field(None, ge=0.0, le=1.0)
+    GAMBLE_WIN_POINTS: Optional[int] = Field(None, ge=0, le=1000)
+    GAMBLE_LOSS_POINTS: Optional[int] = Field(None, ge=0, le=1000)
+    FALSE_REPORT_LIMIT: Optional[int] = Field(None, ge=1, le=100)
+    FALSE_REPORT_PENALTY: Optional[int] = Field(None, ge=0, le=1000)
+    IGNORE_DAYS_BEFORE_PENALTY: Optional[int] = Field(None, ge=1, le=30)
+    CYNICAL_COMMENT_CHANCE: Optional[float] = Field(None, ge=0.0, le=1.0)
+    CYNICAL_COMMENT_COOLDOWN_SECONDS: Optional[int] = Field(None, ge=0, le=86400)
     REACTIONS_ENABLED: Optional[bool] = None
-    REACTION_CHANCE: Optional[float] = None
-    REACTION_COOLDOWN_SECONDS: Optional[int] = None
+    REACTION_CHANCE: Optional[float] = Field(None, ge=0.0, le=1.0)
+    REACTION_COOLDOWN_SECONDS: Optional[int] = Field(None, ge=0, le=86400)
     REACTION_ALLOWED_EMOJIS: Optional[List[str]] = None
     VOICE_DIGEST_ENABLED: Optional[bool] = None
     VOICE_DIGEST_TIME_1: Optional[str] = None
@@ -67,11 +69,11 @@ class ConfigUpdateRequest(BaseModel):
     TTS_PROVIDER: Optional[str] = None
     ELEVENLABS_VOICE_ID: Optional[str] = None
     ELEVENLABS_MODEL_ID: Optional[str] = None
-    ELEVENLABS_STABILITY: Optional[float] = None
-    ELEVENLABS_SIMILARITY_BOOST: Optional[float] = None
+    ELEVENLABS_STABILITY: Optional[float] = Field(None, ge=0.0, le=1.0)
+    ELEVENLABS_SIMILARITY_BOOST: Optional[float] = Field(None, ge=0.0, le=1.0)
     VOICE_DIGEST_VOICE: Optional[str] = None
-    VOICE_DIGEST_PITCH: Optional[float] = None
-    VOICE_DIGEST_SPEED: Optional[float] = None
+    VOICE_DIGEST_PITCH: Optional[float] = Field(None, ge=-20.0, le=20.0)
+    VOICE_DIGEST_SPEED: Optional[float] = Field(None, ge=0.25, le=4.0)
     GOOGLE_TTS_MODEL: Optional[str] = None
     GOOGLE_TTS_VOICE: Optional[str] = None
     GOOGLE_TTS_STYLE: Optional[str] = None
@@ -80,14 +82,14 @@ class ConfigUpdateRequest(BaseModel):
     RANK_GOAT: Optional[List[Optional[int]]] = None
     RANK_OFFENDED: Optional[List[Optional[int]]] = None
     RANK_PIERCED: Optional[List[Optional[int]]] = None
-    REPORT_CONTEXT_LIMIT: Optional[int] = None
-    REPORT_NEXT_CONTEXT_LIMIT: Optional[int] = None
-    MENTION_CHUNK_SIZE: Optional[int] = None
+    REPORT_CONTEXT_LIMIT: Optional[int] = Field(None, ge=1, le=200)
+    REPORT_NEXT_CONTEXT_LIMIT: Optional[int] = Field(None, ge=0, le=50)
+    MENTION_CHUNK_SIZE: Optional[int] = Field(None, ge=1, le=200)
     ENABLE_AGREEMENTS: Optional[bool] = None
-    AGREEMENT_DISPUTE_WINDOW_MINUTES: Optional[int] = None
-    AGREEMENT_DEFAULT_LIFESPAN_HOURS: Optional[int] = None
-    TIMEZONE_OFFSET: Optional[int] = None
-    ANALYSIS_CUTOFF_HOUR: Optional[int] = None
+    AGREEMENT_DISPUTE_WINDOW_MINUTES: Optional[int] = Field(None, ge=1, le=1440)
+    AGREEMENT_DEFAULT_LIFESPAN_HOURS: Optional[int] = Field(None, ge=1, le=8760)
+    TIMEZONE_OFFSET: Optional[int] = Field(None, ge=-12, le=14)
+    ANALYSIS_CUTOFF_HOUR: Optional[int] = Field(None, ge=0, le=23)
     AI_MODEL_ANALYSIS: Optional[str] = None
     AI_MODEL_MULTIMODAL: Optional[str] = None
 
@@ -130,7 +132,8 @@ class VoiceDigestActionRequest(BaseModel):
 # --- Auth Endpoints ---
 
 @router.post("/api/admin/login")
-async def admin_login(body: LoginRequest, response: Response):
+@limiter.limit("10/minute")
+async def admin_login(request: Request, body: LoginRequest, response: Response):
     if not verify_admin_password(body.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -138,13 +141,14 @@ async def admin_login(body: LoginRequest, response: Response):
         )
 
     token = create_admin_token()
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         max_age=TOKEN_EXPIRATION_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=False  # Allow local HTTP testing; in production Cloud Run handles SSL
+        secure=is_https
     )
     return {"status": "ok", "token": token}
 
@@ -466,6 +470,7 @@ async def add_fact(chat_id: str, body: FactCreateRequest, admin=Depends(get_curr
     success = await fact_repository.add_fact(c_id, data)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to add fact")
+    FactService.invalidate_cache(c_id)
     return {"status": "added", "fact": data}
 
 
@@ -479,6 +484,7 @@ async def delete_fact(chat_id: str, fact_id: str, admin=Depends(get_current_admi
     success = await fact_repository.delete_fact(c_id, fact_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete fact")
+    FactService.invalidate_cache(c_id)
     return {"status": "deleted", "fact_id": fact_id}
 
 
@@ -543,8 +549,8 @@ async def action_daily_analysis(body: ActionChatRequest, admin=Depends(get_curre
         result = await analysis_service.perform_chat_analysis(body.chat_id)
         return {"status": "success", "result": result}
     except Exception as e:
-        logger.error(f"Daily analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Daily analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка дневного анализа: {str(e)}")
 
 
 @router.post("/api/admin/actions/weekly_decay")
@@ -563,8 +569,8 @@ async def action_weekly_decay(body: ActionChatRequest, admin=Depends(get_current
             logger.warning(f"Could not send amnesty Telegram message: {e}")
         return {"status": "amnesty_applied", "chat_id": body.chat_id}
     except Exception as e:
-        logger.error(f"Amnesty failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Amnesty failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка применения амнистии: {str(e)}")
 
 
 @router.post("/api/admin/actions/check_agreements")
@@ -578,8 +584,8 @@ async def action_check_agreements(body: CheckAgreementsActionRequest, admin=Depe
         )
         return {"status": "success", "result": res}
     except Exception as e:
-        logger.error(f"Agreement check failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Agreement check failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка проверки договоренностей: {str(e)}")
 
 
 @router.post("/api/admin/actions/lore_evolution")
@@ -588,8 +594,8 @@ async def action_lore_evolution(body: ActionChatRequest, admin=Depends(get_curre
         await LoreService.evolve_lore(int(body.chat_id))
         return {"status": "evolution_completed", "chat_id": body.chat_id}
     except Exception as e:
-        logger.error(f"Lore evolution failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Lore evolution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка эволюции лора: {str(e)}")
 
 
 @router.post("/api/admin/actions/voice_digest")
@@ -605,5 +611,5 @@ async def action_voice_digest(body: VoiceDigestActionRequest, admin=Depends(get_
         )
         return {"status": "success", "result": res}
     except Exception as e:
-        logger.error(f"Voice digest generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Voice digest generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации голосовой хроники: {str(e)}")

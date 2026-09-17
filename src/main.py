@@ -7,9 +7,9 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Request, Header, HTTPException, Depends
 from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from src.utils.limiter import limiter
 
 from src.utils.config import settings
 from src.bot.handlers import router
@@ -24,7 +24,6 @@ from src.utils import messages
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

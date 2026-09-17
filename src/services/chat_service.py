@@ -199,7 +199,7 @@ class ChatService:
             
             # Special Check: Correction loop when replying to bot
             if is_reply_to_bot:
-                correction_keywords = ["неправда", "врешь", "врёшь", "забудь", "ошибка", "wrong", "lie", "бред", "галлюцинация"]
+                correction_keywords = ["неправда", "врешь", "врёшь", "забудь", "ошибка", "wrong", "lie", "бред", "галлюцинация", "hallucination"]
                 if any(kw in comment_text.lower() for kw in correction_keywords):
                     # User is correcting the bot
                     cls._last_comment_time[chat_id] = now

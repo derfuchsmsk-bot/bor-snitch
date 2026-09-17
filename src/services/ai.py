@@ -477,9 +477,11 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     """
     Generates a short, cynical comment based on context.
     """
-    # Improved cache key: include chat_id, current_text, and a hash of context_msgs
-    context_hash = hash(frozenset(msg.get('message_id', msg.get('text', '')) for msg in context_msgs))
-    cache_key = (chat_id, current_text, context_hash)
+    import hashlib
+    # Deterministic cache key based on chat, normalized text, and signature of latest messages
+    recent_ids = ":".join(str(msg.get('message_id') or msg.get('text', '')) for msg in context_msgs[-3:])
+    context_sig = hashlib.sha256(recent_ids.encode('utf-8', errors='ignore')).hexdigest()[:16]
+    cache_key = (chat_id, current_text.strip().lower(), context_sig)
     
     if cache_key in comment_cache:
         logging.info(f"Using cached cynical comment for chat {chat_id}")
@@ -518,9 +520,13 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         lore_core = lore_full.get('core', lore_full)
         lore_json = json.dumps(lore_core, ensure_ascii=False, indent=2)
         
-        facts_str = await FactService.get_facts_as_str(chat_id) if chat_id else ""
+        active_user_ids = {str(msg.get('user_id')) for msg in context_msgs if msg.get('user_id')}
+        if current_username:
+            active_user_ids.add(str(current_username).lstrip('@'))
+            
+        facts_str = await FactService.get_facts_as_str(chat_id, limit=7) if chat_id else ""
         context_str_lore = lore_full.get('current_context', "")
-        social_context = await DossierService.get_social_graph_context(chat_id) if chat_id else ""
+        social_context = await DossierService.get_social_graph_context(chat_id, filter_user_ids=active_user_ids) if chat_id else ""
         
         @retry(
             stop=stop_after_attempt(3),

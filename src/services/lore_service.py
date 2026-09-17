@@ -3,10 +3,13 @@ import logging
 from datetime import datetime, timezone
 from google.cloud import firestore
 from vertexai.generative_models import GenerativeModel
+from cachetools import TTLCache
 
 from .db import db
 from ..utils.game_config import config
 from .fact_service import FactService
+
+_lore_cache = TTLCache(maxsize=100, ttl=300)
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -18,10 +21,13 @@ class LoreService:
     @staticmethod
     async def get_lore(chat_id: int):
         """
-        Fetches lore for a specific chat.
+        Fetches lore for a specific chat with in-memory caching.
         Falls back to empty default if not found in DB.
         """
         chat_id_str = str(chat_id)
+        if chat_id_str in _lore_cache:
+            return _lore_cache[chat_id_str]
+
         doc_ref = db.collection("chats").document(chat_id_str).collection("lore").document("current")
         
         default_lore = {
@@ -39,9 +45,12 @@ class LoreService:
             doc = await doc_ref.get()
             if doc.exists:
                 data = doc.to_dict()
-                return data.get("data") or data # Handle both nested and flat structures
+                result = data.get("data") or data # Handle both nested and flat structures
+                _lore_cache[chat_id_str] = result
+                return result
             else:
                 logging.info(f"Lore not found for chat {chat_id}, using minimal default.")
+                _lore_cache[chat_id_str] = default_lore
                 return default_lore
         except Exception as e:
             logging.error(f"Error fetching lore from DB: {e}")
@@ -55,8 +64,9 @@ class LoreService:
 
     @staticmethod
     async def update_lore(chat_id: int, new_lore_data: dict, generated_by: str = "system"):
-        """Updates the lore in Firestore."""
+        """Updates the lore in Firestore and invalidates cache."""
         chat_id_str = str(chat_id)
+        _lore_cache.pop(chat_id_str, None)
         doc_ref = db.collection("chats").document(chat_id_str).collection("lore").document("current")
         
         # Get current version to increment
