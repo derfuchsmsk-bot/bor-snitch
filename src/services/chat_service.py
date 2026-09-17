@@ -11,6 +11,7 @@ class ChatService:
     # Cooldown states: chat_id -> datetime, (chat_id, user_id) -> datetime
     _last_comment_time = {}
     _last_user_comment_time = {}
+    _last_reaction_time = {}
 
     @classmethod
     async def cleanup_old_cooldowns(cls):
@@ -22,6 +23,107 @@ class ChatService:
         for key, last_time in list(cls._last_user_comment_time.items()):
             if (now - last_time).total_seconds() > config.CYNICAL_COMMENT_COOLDOWN_SECONDS * 3:
                 del cls._last_user_comment_time[key]
+        for chat_id, last_time in list(cls._last_reaction_time.items()):
+            if (now - last_time).total_seconds() > getattr(config, "REACTION_COOLDOWN_SECONDS", 120) * 3:
+                del cls._last_reaction_time[chat_id]
+
+    @classmethod
+    def should_react(cls, chat_id: int, text: str, stats: dict) -> tuple[bool, str]:
+        """
+        Determines whether the bot should put an emoji reaction on a message and chooses which emoji.
+        """
+        if not getattr(config, "REACTIONS_ENABLED", True):
+            return False, ""
+
+        if not text or text.startswith('/'):
+            return False, ""
+
+        now = datetime.now()
+        last_time = cls._last_reaction_time.get(chat_id)
+        cooldown = getattr(config, "REACTION_COOLDOWN_SECONDS", 120)
+        if last_time and (now - last_time).total_seconds() < cooldown:
+            return False, ""
+
+        allowed_emojis = getattr(config, "REACTION_ALLOWED_EMOJIS", ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"])
+        if not allowed_emojis:
+            return False, ""
+
+        base_chance = getattr(config, "REACTION_CHANCE", 0.02)
+        chance = base_chance
+        text_lower = text.lower()
+        preferred_emoji = None
+
+        # Triggers:
+        # 1. Whining, cringe, complaining -> 🤡
+        if any(w in text_lower for w in ["устал", "все плохо", "всё плохо", "тяжело", "кринж", "душно", "зануда", "бред", "ппц", "жесть", "нытье", "обиделся"]):
+            chance += 0.08
+            preferred_emoji = "🤡"
+
+        # 2. Sinner roast target (high points / rank Обиженный / Козёл) -> 🚽 or 🤡
+        pts = stats.get('total_points', 0) if stats else 0
+        if pts >= 250:
+            chance += 0.06
+            preferred_emoji = "🚽" if "🚽" in allowed_emojis else "🤡"
+
+        # 3. Drama, gossip, accusations, snitching -> 🍿 or 👀
+        if any(w in text_lower for w in ["донос", "крыса", "снитч", "предатель", "врешь", "врёшь", "спорим", "забьемся", "докажи", "слился", "позор"]):
+            chance += 0.08
+            preferred_emoji = "🍿" if "🍿" in allowed_emojis else "👀"
+
+        # 4. Sigma / pact / agreement / respect -> 🗿 or 👑
+        if any(w in text_lower for w in ["по рукам", "договорились", "базар", "пацан", "красава", "база", "согласен", "победа", "слово"]):
+            chance += 0.08
+            preferred_emoji = "🗿" if "🗿" in allowed_emojis else "👑"
+
+        # 5. Stickers / memes -> 🔥 or 🤡
+        if "[sticker]" in text_lower or "[image/meme]" in text_lower:
+            chance += 0.05
+            preferred_emoji = "🔥" if "🔥" in allowed_emojis else "🤡"
+
+        # 6. Questions
+        if "?" in text:
+            chance += 0.04
+            preferred_emoji = "👀"
+
+        if random.random() < chance:
+            if preferred_emoji and preferred_emoji in allowed_emojis:
+                chosen = preferred_emoji
+            else:
+                chosen = random.choice(allowed_emojis)
+            return True, chosen
+
+        return False, ""
+
+    @classmethod
+    async def process_reaction(cls, message, comment_text: str):
+        """
+        Attempts to apply a cynical emoji reaction to the user's message.
+        """
+        try:
+            if config.BOT_DISABLED or not getattr(config, "REACTIONS_ENABLED", True):
+                return False
+
+            if getattr(message.from_user, 'is_bot', False):
+                return False
+
+            chat_id = message.chat.id
+            user_id = message.from_user.id
+            user_stats = await db.get_user_stats(chat_id, user_id)
+
+            should, emoji = cls.should_react(chat_id, comment_text, user_stats)
+            if should and emoji:
+                from aiogram.types import ReactionTypeEmoji
+                cls._last_reaction_time[chat_id] = datetime.now()
+                try:
+                    await message.react(reaction=[ReactionTypeEmoji(emoji=emoji)])
+                    logging.info(f"Bot reacted with {emoji} to message {message.message_id} in chat {chat_id}")
+                    return True
+                except Exception as e:
+                    logging.debug(f"Could not apply reaction {emoji}: {e}")
+                    return False
+        except Exception as e:
+            logging.debug(f"Error in process_reaction: {e}")
+        return False
 
     @classmethod
     def should_comment(cls, text: str, stats: dict, is_mentioned: bool = False) -> bool:

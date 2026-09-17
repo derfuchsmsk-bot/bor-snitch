@@ -57,6 +57,10 @@ class ConfigUpdateRequest(BaseModel):
     IGNORE_DAYS_BEFORE_PENALTY: Optional[int] = None
     CYNICAL_COMMENT_CHANCE: Optional[float] = None
     CYNICAL_COMMENT_COOLDOWN_SECONDS: Optional[int] = None
+    REACTIONS_ENABLED: Optional[bool] = None
+    REACTION_CHANCE: Optional[float] = None
+    REACTION_COOLDOWN_SECONDS: Optional[int] = None
+    REACTION_ALLOWED_EMOJIS: Optional[List[str]] = None
     RANK_NORMAL: Optional[List[Optional[int]]] = None
     RANK_SHNYR: Optional[List[Optional[int]]] = None
     RANK_GOAT: Optional[List[Optional[int]]] = None

@@ -372,6 +372,9 @@ async def handle_messages(message: types.Message):
             await log_message(sent_msg)
         except Exception as e:
             logging.error(f"Failed to log bot message: {e}")
+    else:
+        # If no text reply was sent, evaluate for an automatic cynical reaction
+        await ChatService.process_reaction(message, comment_text)
             
     # Correction Loop: If user says "Это неправда" or "Ты врешь" etc.
     # Note: process_cynical_comment in ChatService handles generation, but this specific 'correction' logic 

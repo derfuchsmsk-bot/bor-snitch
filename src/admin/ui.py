@@ -1,7 +1,7 @@
 from fastapi.responses import HTMLResponse
 
 def get_admin_html() -> str:
-    return """<!DOCTYPE html>
+    return r"""<!DOCTYPE html>
 <html lang="ru" class="dark">
 <head>
   <meta charset="UTF-8">
@@ -311,6 +311,44 @@ def get_admin_html() -> str:
             <div>
               <label class="block text-xs font-medium text-slate-400 mb-1">Кулдаун комментария (сек)</label>
               <input type="number" id="cfg-CYNICAL_COMMENT_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+            </div>
+          </div>
+
+          <!-- Card: Automatic Emoji Reactions -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4">
+            <h3 class="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+              <span class="text-base">🎭</span>
+              Циничные Эмодзи-Реакции
+            </h3>
+
+            <div>
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div>
+                  <div class="text-sm font-semibold text-white">Включить реакции</div>
+                  <div class="text-xs text-slate-400">Бот ставит эмодзи на сообщения в чате</div>
+                </div>
+                <input type="checkbox" id="cfg-REACTIONS_ENABLED" class="w-5 h-5 accent-amber-500 rounded cursor-pointer">
+              </label>
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-xs font-medium text-slate-400">Шанс реакции (на сообщение)</label>
+                <span id="label-REACTION_CHANCE" class="text-xs font-mono text-amber-400 font-bold">2.0%</span>
+              </div>
+              <input type="range" id="cfg-REACTION_CHANCE" min="0" max="0.10" step="0.005" oninput="updateRangeLabel(this, '%', 100)"
+                     class="w-full accent-amber-500 cursor-pointer">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Кулдаун реакций (сек)</label>
+              <input type="number" id="cfg-REACTION_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Разрешенные эмодзи</label>
+              <input type="text" id="cfg-REACTION_ALLOWED_EMOJIS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+              <div class="text-[10px] text-slate-500 mt-1">Эмодзи через пробел (🤡 🗿 🚽 👑 🍿 👀 🔥 👌)</div>
             </div>
           </div>
 
@@ -934,12 +972,13 @@ def get_admin_html() -> str:
       for (const [key, val] of Object.entries(cfg)) {
         const el = document.getElementById('cfg-' + key);
         if (!el) continue;
-        if (el.type === 'checkbox') {
+        if (key === 'REACTION_ALLOWED_EMOJIS') {
+          el.value = Array.isArray(val) ? val.join(' ') : (val || '');
+        } else if (el.type === 'checkbox') {
           el.checked = !!val;
         } else if (el.type === 'range') {
           el.value = val;
           const unit = key.includes('CHANCE') ? '%' : '';
-          const mult = key === 'CYNICAL_COMMENT_CHANCE' ? 100 : 100;
           const label = document.getElementById('label-' + key);
           if (label) label.textContent = `${(val * 100).toFixed(1)}%`;
         } else {
@@ -994,7 +1033,9 @@ def get_admin_html() -> str:
       for (const [key, defaultVal] of Object.entries(state.defaults || {})) {
         const el = document.getElementById('cfg-' + key);
         if (!el) continue;
-        if (el.type === 'checkbox') {
+        if (key === 'REACTION_ALLOWED_EMOJIS') {
+          updates[key] = el.value.replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+        } else if (el.type === 'checkbox') {
           updates[key] = el.checked;
         } else if (typeof defaultVal === 'number') {
           updates[key] = parseFloat(el.value);

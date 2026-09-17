@@ -30,6 +30,12 @@ DEFAULT_CONFIG_VALUES = {
     "CYNICAL_COMMENT_CHANCE": 0.002,
     "CYNICAL_COMMENT_COOLDOWN_SECONDS": 180,
 
+    # Automatic Emoji Reactions
+    "REACTIONS_ENABLED": True,
+    "REACTION_CHANCE": 0.02,
+    "REACTION_COOLDOWN_SECONDS": 120,
+    "REACTION_ALLOWED_EMOJIS": ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"],
+
     # Ranks (serialized as lists, second value None = inf)
     "RANK_NORMAL": [0, 49],
     "RANK_SHNYR": [50, 249],
@@ -90,7 +96,13 @@ class GameConfig:
 
             default_val = DEFAULT_CONFIG_VALUES[key]
 
-            if key.startswith("RANK_") and isinstance(val, (list, tuple)) and len(val) >= 2:
+            if key == "REACTION_ALLOWED_EMOJIS":
+                if isinstance(val, str):
+                    emojis = [x.strip() for x in val.replace(",", " ").split() if x.strip()]
+                    setattr(self, key, emojis if emojis else DEFAULT_CONFIG_VALUES["REACTION_ALLOWED_EMOJIS"])
+                elif isinstance(val, list):
+                    setattr(self, key, [str(x).strip() for x in val if str(x).strip()])
+            elif key.startswith("RANK_") and isinstance(val, (list, tuple)) and len(val) >= 2:
                 second = float("inf") if (val[1] is None or val[1] == "" or val[1] == "inf") else int(val[1])
                 setattr(self, key, (int(val[0]), second))
             elif isinstance(default_val, bool):
