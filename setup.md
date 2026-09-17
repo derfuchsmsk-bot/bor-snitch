@@ -171,7 +171,32 @@ curl -F "url=https://YOUR_SERVICE_URL/webhook" https://api.telegram.org/botYOUR_
     {"chat_id": "123456789"}
     ```
 
-#### В. Эволюция Лора (Lore Evolution)
+#### В. Голосовая радио-хроника (Voice Digest)
+Генерирует и присылает голосовую сводку в чат 2 раза в день через ElevenLabs.
+
+*   **Дневной выпуск (14:00 МСК):**
+    *   **Имя:** `voice-digest-day`
+    *   **Частота:** `0 14 * * *`
+    *   **URL:** `https://YOUR-SERVICE-URL.run.app/voice_digest`
+    *   **HTTP метод:** POST
+    *   **Заголовки:** `X-Secret-Token: ВАШ_SECRET_TOKEN`, `Content-Type: application/json`
+    *   **Тело (Body):**
+        ```json
+        {"chat_id": "-1003893798466", "edition": "Дневной выпуск (14:00)"}
+        ```
+
+*   **Вечерний приговор (22:00 МСК):**
+    *   **Имя:** `voice-digest-evening`
+    *   **Частота:** `0 22 * * *`
+    *   **URL:** `https://YOUR-SERVICE-URL.run.app/voice_digest`
+    *   **HTTP метод:** POST
+    *   **Заголовки:** `X-Secret-Token: ВАШ_SECRET_TOKEN`, `Content-Type: application/json`
+    *   **Тело (Body):**
+        ```json
+        {"chat_id": "-1003893798466", "edition": "Вечерний выпуск (22:00)"}
+        ```
+
+#### Г. Эволюция Лора (Lore Evolution)
 Обновляет внутреннее описание персонажей и событий на основе воспоминаний.
 
 *   **Примечание:** Этот скрипт (`src/scripts/evolve_lore.py`) пока предназначен для ручного или периодического запуска через консоль/скрипт, так как он может занимать много времени. В будущем может быть добавлен как HTTP эндпоинт.
