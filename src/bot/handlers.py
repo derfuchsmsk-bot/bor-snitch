@@ -440,6 +440,17 @@ async def handle_messages(message: types.Message):
 
     # Cynical Comment Logic via ChatService
     comment_text = message.text or override_text
+
+    # Voice Chat Live Speaking Hook: if bot is in a voice call, speak into the call!
+    from ..services.voice_chat_service import VoiceChatService
+    if VoiceChatService.is_in_call(message.chat.id):
+        txt_lower = comment_text.lower()
+        bot_user = await message.bot.get_me()
+        is_direct = f"@{bot_user.username}" in comment_text or (message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id)
+        is_keyword = any(k in txt_lower for k in ["снитч", "кизару", "бот", "поясни", "скажи", "как думаешь", "ты тут", "слышишь", "эй"])
+        if is_direct or is_keyword or (len(comment_text) > 8 and random.random() < 0.30):
+            uname = message.from_user.username or message.from_user.first_name
+            asyncio.create_task(VoiceChatService.speak_text_response_in_call(message.chat.id, uname, comment_text))
     
     comment = await ChatService.process_cynical_comment(message, comment_text)
     if comment:

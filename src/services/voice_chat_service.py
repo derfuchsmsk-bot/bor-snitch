@@ -1,11 +1,14 @@
 import os
+import io
 import time
+import wave
 import random
 import asyncio
 import logging
 import tempfile
 from typing import Optional
 
+from vertexai.generative_models import GenerativeModel, Part, HarmCategory, HarmBlockThreshold
 from src.utils.config import settings
 from src.utils.game_config import config
 from src.services.tts_service import TTSService
@@ -29,13 +32,26 @@ KIZARU_LEAVE_EXITS = [
     "Без базара, я на выходе. Но помните: Снитч-Бот всё слышал. Вечером очки посчитаем."
 ]
 
+VOICE_SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
+
 class VoiceChatService:
     _client = None
     _pytgcalls = None
     _is_running = False
-    _active_calls = {}      # chat_id -> asyncio.Task
-    _last_activity = {}     # chat_id -> float (timestamp)
+    _active_calls = {}          # chat_id -> asyncio.Task (watchdog)
+    _listener_tasks = {}        # chat_id -> asyncio.Task (audio listener)
+    _last_activity = {}         # chat_id -> float (timestamp)
     _lock = asyncio.Lock()
+
+    @classmethod
+    def is_in_call(cls, chat_id: int) -> bool:
+        """Returns True if the bot is currently connected to a voice chat."""
+        return int(chat_id) in cls._active_calls
 
     @classmethod
     async def ensure_started(cls):
@@ -81,6 +97,17 @@ class VoiceChatService:
         cls._last_activity[int(chat_id)] = time.time()
 
     @classmethod
+    def pcm_to_wav(cls, pcm_bytes: bytes, channels: int = 2, sampwidth: int = 2, framerate: int = 48000) -> bytes:
+        """Converts raw PCM audio bytes to WAV container in-memory."""
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sampwidth)
+            wav_file.setframerate(framerate)
+            wav_file.writeframes(pcm_bytes)
+        return buf.getvalue()
+
+    @classmethod
     async def play_phrase_in_call(cls, chat_id: int, phrase: str):
         """Synthesizes text via ElevenLabs/TTS and streams it into the Telegram voice call."""
         from pytgcalls.types import MediaStream
@@ -88,7 +115,6 @@ class VoiceChatService:
         pytgcalls = await cls.ensure_started()
         audio_bytes, audio_fmt = await TTSService.synthesize_speech(phrase)
 
-        # Write to temporary file for PyTgCalls MediaStream
         suffix = f".{audio_fmt}"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
             tmp_file.write(audio_bytes)
@@ -99,11 +125,10 @@ class VoiceChatService:
             await pytgcalls.play(int(chat_id), MediaStream(tmp_path))
             logger.info(f"Streaming phrase into call {chat_id}: '{phrase[:40]}...'")
         finally:
-            # Schedule file deletion after audio has been streamed
-            asyncio.create_task(cls._delayed_file_cleanup(tmp_path, delay=20))
+            asyncio.create_task(cls._delayed_file_cleanup(tmp_path, delay=25))
 
     @classmethod
-    async def _delayed_file_cleanup(cls, file_path: str, delay: int = 20):
+    async def _delayed_file_cleanup(cls, file_path: str, delay: int = 25):
         await asyncio.sleep(delay)
         try:
             if os.path.exists(file_path):
@@ -112,10 +137,43 @@ class VoiceChatService:
             pass
 
     @classmethod
+    async def speak_text_response_in_call(cls, chat_id: int, username: str, user_text: str):
+        """
+        When someone writes in the chat while the bot is in a voice call,
+        Gemini generates a Kizaru reply and speaks it directly into the voice call.
+        """
+        if not cls.is_in_call(chat_id):
+            return
+
+        cls.record_activity(chat_id)
+
+        prompt = f"""
+Ты — Снитч-Бот в голосовом чате Telegram в образе рэпера Кизару (Олег Нечипоренко).
+Пользователь {username} только что написал в чат: "{user_text}".
+ИНСТРУКЦИЯ:
+Ответь ему в голосовой чат прямо сейчас дерзко, на чилле и по фактам на сленге Кизару (1-2 коротких предложения).
+Отвечай СТРОГО на русском языке, без смайликов и списков (для чтения вслух в микрофон).
+"""
+        try:
+            model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+            resp = await model.generate_content_async(
+                contents=[prompt],
+                safety_settings=VOICE_SAFETY_SETTINGS,
+                generation_config={"temperature": 0.85, "max_output_tokens": 150}
+            )
+            reply = resp.text.strip() if resp and resp.text else ""
+            if reply:
+                reply_cleaned = TTSService.clean_text_for_speech(reply)
+                logger.info(f"Speaking chat reply into voice call {chat_id}: {reply_cleaned}")
+                await cls.play_phrase_in_call(chat_id, reply_cleaned)
+        except Exception as e:
+            logger.error(f"Error speaking text response in call: {e}")
+
+    @classmethod
     async def join_voice_chat(cls, chat_id: int) -> str:
         """
         Connects the bot to the group voice chat, drops the Kizaru greeting,
-        and launches the 60-second inactivity watchdog.
+        and launches the listener and inactivity watchdog.
         """
         if not getattr(config, "VOICE_CHAT_ENABLED", True) or config.BOT_DISABLED:
             raise RuntimeError("Voice chat feature is currently disabled")
@@ -127,14 +185,100 @@ class VoiceChatService:
         # Connect and play greeting
         await cls.play_phrase_in_call(cid, phrase)
 
-        # Cancel any previous watchdog if running
+        # Cancel any previous tasks if running
         if cid in cls._active_calls:
             cls._active_calls[cid].cancel()
+        if cid in cls._listener_tasks:
+            cls._listener_tasks[cid].cancel()
 
-        # Start watchdog loop
+        # Start watchdog loop and audio listener loop
         cls._active_calls[cid] = asyncio.create_task(cls._inactivity_watchdog(cid))
-        logger.info(f"Bot joined voice chat {cid} with Kizaru greeting.")
+        cls._listener_tasks[cid] = asyncio.create_task(cls._voice_listener_loop(cid))
+
+        logger.info(f"Bot joined voice chat {cid} with Kizaru greeting and live listener.")
         return phrase
+
+    @classmethod
+    async def _voice_listener_loop(cls, chat_id: int):
+        """
+        Captures incoming live voice audio from participants in the call,
+        converts PCM to WAV, passes it to Gemini, and triggers Kizaru speech replies.
+        """
+        cid = int(chat_id)
+        record_file = os.path.join(tempfile.gettempdir(), f"voice_incoming_{cid}.raw")
+        from pytgcalls.types import RecordStream
+
+        # Give greeting 6 seconds to play before engaging recording
+        await asyncio.sleep(6)
+
+        try:
+            pytgcalls = await cls.ensure_started()
+            try:
+                await pytgcalls.record(cid, RecordStream(audio=record_file))
+                logger.info(f"Live microphone recording started for chat {cid} -> {record_file}")
+            except Exception as e:
+                logger.warning(f"Could not initialize PyTgCalls recording: {e}")
+                return
+
+            while cid in cls._active_calls:
+                await asyncio.sleep(6)
+
+                if not os.path.exists(record_file):
+                    continue
+
+                size = os.path.getsize(record_file)
+                # If participants spoke (at least ~60KB of 48kHz audio)
+                if size > 60_000:
+                    try:
+                        with open(record_file, "rb") as f:
+                            raw_pcm = f.read()
+
+                        # Truncate file so we only analyze fresh audio next time
+                        open(record_file, "wb").close()
+
+                        wav_bytes = cls.pcm_to_wav(raw_pcm)
+                        cls.record_activity(cid)
+
+                        # Send audio chunk to Gemini for comprehension
+                        audio_part = Part.from_data(wav_bytes, mime_type="audio/wav")
+                        prompt = """
+Ты — Снитч-Бот в голосовом чате Telegram в образе рэпера Кизару (Олег Нечипоренко).
+Послушай аудиозапись того, что только что сказали пацаны в войс-чате.
+ИНСТРУКЦИЯ:
+1. Если кто-то обращается к тебе (Снитч, Кизару, Бот, Олег, эй) ИЛИ кто-то спорит, ноет или выдает кринж — выдай дерзкий, смешной ответ на сленге Кизару (1-2 коротких предложения).
+2. Если в аудио тишина, неразборчивый шум или обычный фоновый треп без обращения к тебе — ответь СТРОГО ОДНИМ СЛОВОМ: IGNORE.
+3. Текст пиши СТРОГО НА РУССКОМ для чтения вслух.
+"""
+                        model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+                        resp = await model.generate_content_async(
+                            contents=[prompt, audio_part],
+                            safety_settings=VOICE_SAFETY_SETTINGS,
+                            generation_config={"temperature": 0.8, "max_output_tokens": 120}
+                        )
+                        reply = resp.text.strip() if resp and resp.text else ""
+
+                        if reply and not reply.upper().startswith("IGNORE"):
+                            reply_cleaned = TTSService.clean_text_for_speech(reply)
+                            logger.info(f"Kizaru responding to heard voice in call {cid}: '{reply_cleaned}'")
+                            await cls.play_phrase_in_call(cid, reply_cleaned)
+                            # Wait for phrase to finish streaming, then resume recording
+                            await asyncio.sleep(6)
+                            try:
+                                await pytgcalls.record(cid, RecordStream(audio=record_file))
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.debug(f"Audio chunk evaluation skipped: {e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Error in voice listener loop: {e}")
+        finally:
+            if os.path.exists(record_file):
+                try:
+                    os.remove(record_file)
+                except Exception:
+                    pass
 
     @classmethod
     async def _inactivity_watchdog(cls, chat_id: int):
@@ -153,7 +297,6 @@ class VoiceChatService:
                     exit_phrase = random.choice(KIZARU_INACTIVITY_EXITS)
                     try:
                         await cls.play_phrase_in_call(cid, exit_phrase)
-                        # Give audio time to stream before hanging up
                         await asyncio.sleep(5)
                     except Exception as e:
                         logger.warning(f"Could not play exit phrase: {e}")
@@ -169,6 +312,11 @@ class VoiceChatService:
     async def leave_voice_chat(cls, chat_id: int, reason: str = "manual") -> Optional[str]:
         """Disconnects the bot from the group voice chat with optional Kizaru exit line."""
         cid = int(chat_id)
+
+        # Cancel listener task
+        if cid in cls._listener_tasks:
+            cls._listener_tasks[cid].cancel()
+            del cls._listener_tasks[cid]
 
         # Cancel watchdog
         if cid in cls._active_calls:
