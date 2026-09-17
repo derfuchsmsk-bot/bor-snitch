@@ -133,10 +133,14 @@ class VoiceDigestService:
         audio_bytes = await TTSService.synthesize_voice_ogg(script)
 
         if send_to_telegram and bot:
-            is_day = "дневн" in edition_type.lower() or "14:00" in edition_type
-            title = "🎙️ ОБЕДЕННАЯ ХРОНИКА САЙОНАРЫ (14:00)" if is_day else "📻 ВЕЧЕРНИЙ ПРИГОВОР САЙОНАРЫ (22:00)"
-            caption_text = script if len(script) <= 900 else script[:850] + "..."
-            caption = f"<b>{title}</b>\n\n<i>{escape(caption_text)}</i>"
+            if "дневн" in edition_type.lower() or "14:00" in edition_type:
+                title = "🎙️ ОБЕДЕННАЯ ХРОНИКА САЙОНАРЫ (14:00)"
+            elif "вечерн" in edition_type.lower() or "22:00" in edition_type:
+                title = "📻 ВЕЧЕРНИЙ ПРИГОВОР САЙОНАРЫ (22:00)"
+            else:
+                title = f"🎙️ {edition_type.upper()}"
+
+            caption = f"<b>{title}</b>"
 
             voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.ogg")
             try:
