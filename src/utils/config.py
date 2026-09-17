@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str = ""
     TELEGRAM_API_ID: int | None = None
     TELEGRAM_API_HASH: str | None = None
+    TELEGRAM_STRING_SESSION: str = ""
 
     @property
     def effective_admin_password(self) -> str:

@@ -48,17 +48,27 @@ class VoiceChatService:
                 raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH must be configured in settings")
 
             from telethon import TelegramClient
+            from telethon.sessions import StringSession
             from pytgcalls import PyTgCalls
 
-            # Session name in /tmp for serverless container write permissions
-            session_path = os.path.join(tempfile.gettempdir(), "snitch_bot_telethon")
+            if settings.TELEGRAM_STRING_SESSION:
+                session = StringSession(settings.TELEGRAM_STRING_SESSION)
+            else:
+                session = os.path.join(tempfile.gettempdir(), "snitch_bot_telethon")
+
             cls._client = TelegramClient(
-                session_path,
+                session,
                 api_id=int(settings.TELEGRAM_API_ID),
                 api_hash=str(settings.TELEGRAM_API_HASH)
             )
 
-            await cls._client.start(bot_token=settings.TELEGRAM_TOKEN)
+            if settings.TELEGRAM_STRING_SESSION:
+                await cls._client.connect()
+                if not await cls._client.is_user_authorized():
+                    raise RuntimeError("StringSession provided but user account is not authorized")
+            else:
+                await cls._client.start(bot_token=settings.TELEGRAM_TOKEN)
+
             cls._pytgcalls = PyTgCalls(cls._client)
             await cls._pytgcalls.start()
             cls._is_running = True
