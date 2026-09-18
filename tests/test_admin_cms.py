@@ -325,3 +325,57 @@ def test_config_spontaneous_judgment_update():
         assert config.REPORT_CONTEXT_LIMIT == 40
         assert config.REPORT_NEXT_CONTEXT_LIMIT == 10
 
+
+def test_get_and_send_chat_messages_endpoint():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Test GET messages
+    with patch("src.admin.router.message_repository.get_latest_chat_messages", new_callable=AsyncMock) as mock_get_msgs:
+        mock_get_msgs.return_value = [
+            {"message_id": "1", "username": "elisei", "text": "Привет", "timestamp": "2026-09-18T12:00:00Z"},
+            {"message_id": "2", "username": "YOU (Snitch Bot)", "text": "Здорово", "is_bot": True}
+        ]
+        resp = client.get(
+            f"/api/admin/chats/{settings.MAIN_CHAT_ID}/messages",
+            headers=headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["messages"]) == 2
+        assert data["messages"][0]["text"] == "Привет"
+
+    # Test POST send message
+    with patch("src.main.bot.send_message", new_callable=AsyncMock) as mock_send, \
+         patch("src.services.db.log_message", new_callable=AsyncMock) as mock_log:
+        
+        mock_msg = MagicMock()
+        mock_msg.message_id = 999
+        mock_msg.date = MagicMock()
+        mock_msg.date.isoformat.return_value = "2026-09-18T12:05:00Z"
+        mock_send.return_value = mock_msg
+
+        resp = client.post(
+            f"/api/admin/chats/{settings.MAIN_CHAT_ID}/messages",
+            json={"text": "<b>Привет от бота!</b>", "parse_mode": "HTML"},
+            headers=headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "sent"
+        assert resp.json()["message_id"] == 999
+        mock_send.assert_called_once_with(
+            chat_id=int(settings.MAIN_CHAT_ID),
+            text="<b>Привет от бота!</b>",
+            parse_mode="HTML"
+        )
+        mock_log.assert_called_once_with(mock_msg)
+
+
+def test_admin_ui_contains_chat_tab():
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "tab-content-chat" in resp.text
+    assert "loadChatMessages" in resp.text
+    assert "sendChatMessageFromAdmin" in resp.text
+    assert "chat-reply-banner" in resp.text
+

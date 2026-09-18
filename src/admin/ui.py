@@ -147,6 +147,10 @@ def get_admin_html() -> str:
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             🧠 Студия промптов
           </button>
+          <button onclick="switchTab('chat')" data-tab="chat"
+                  class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60 flex items-center gap-1.5">
+            <span>💬</span> <span>Чат</span>
+          </button>
           <button onclick="switchTab('users')" data-tab="users"
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             👥 Участники и Очки
@@ -857,6 +861,95 @@ def get_admin_html() -> str:
         </div>
       </section>
 
+      <!-- ================= TAB: CHAT ================= -->
+      <section id="tab-content-chat" class="tab-pane hidden space-y-4">
+        <!-- Chat Header Card -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111827] p-4 sm:p-5 rounded-2xl border border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-xl">
+              💬
+            </div>
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <span>Прямой эфир чата</span>
+                <span id="chat-live-badge" class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE
+                </span>
+              </h2>
+              <p class="text-xs text-slate-400">Переписка в реальном времени и отправка сообщений от лица Снитч-бота</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-[#162032] px-3 py-2 rounded-xl border border-slate-700 select-none">
+              <input type="checkbox" id="chat-auto-refresh" checked class="w-4 h-4 accent-purple-500 rounded cursor-pointer">
+              <span>Автообновление (5с)</span>
+            </label>
+            <button onclick="loadChatMessages(true)" id="btn-refresh-chat"
+                    class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>Обновить</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Container -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl flex flex-col h-[650px] shadow-2xl overflow-hidden">
+          <!-- Messages Scroll Area -->
+          <div id="chat-messages-container" class="flex-1 p-4 sm:p-5 overflow-y-auto space-y-3 bg-[#0d1424]">
+            <div class="py-12 text-center text-slate-500 text-xs">Загрузка сообщений...</div>
+          </div>
+
+          <!-- Reply Banner (Hidden by default) -->
+          <div id="chat-reply-banner" class="hidden px-4 py-2 bg-[#162032] border-t border-slate-800 flex items-center justify-between text-xs text-slate-300">
+            <div class="flex items-center gap-2 truncate">
+              <span class="text-purple-400 font-bold">↩️ Ответ на:</span>
+              <span id="chat-reply-author" class="font-semibold text-white"></span>
+              <span id="chat-reply-preview" class="text-slate-400 truncate italic"></span>
+            </div>
+            <button onclick="cancelChatReply()" class="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded hover:bg-slate-700">✕ Отмена</button>
+          </div>
+
+          <!-- Message Composer Area -->
+          <div class="p-3 sm:p-4 bg-[#111827] border-t border-slate-800 space-y-2">
+            <!-- Quick Chips & Options -->
+            <div class="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-[11px]">
+              <div class="flex items-center gap-1.5 flex-nowrap">
+                <span class="text-slate-500 text-[10px] uppercase font-semibold">Шаблоны:</span>
+                <button type="button" onclick="insertChatTemplate('⚖️ Масть зафиксирована: ')"
+                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 whitespace-nowrap">⚖️ Масть</button>
+                <button type="button" onclick="insertChatTemplate('👑 По-людски: ')"
+                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 whitespace-nowrap">👑 Людское</button>
+                <button type="button" onclick="insertChatTemplate('📣 Сайонара сбор! ')"
+                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 whitespace-nowrap">📣 Сбор</button>
+                <button type="button" onclick="insertChatTemplate('🤡 ')"
+                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 whitespace-nowrap">🤡</button>
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-[10px] text-slate-400">Формат:</label>
+                <select id="chat-parse-mode" class="bg-[#1a2333] border border-slate-700 text-white rounded px-2 py-0.5 text-[11px] focus:outline-none">
+                  <option value="HTML">HTML</option>
+                  <option value="Markdown">Markdown</option>
+                  <option value="none">Обычный текст</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="flex gap-2 items-end">
+              <textarea id="chat-input-text" rows="2"
+                        placeholder="Напишите сообщение в чат от имени бота... (Ctrl+Enter для отправки)"
+                        onkeydown="handleChatInputKeydown(event)"
+                        class="flex-1 p-3 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans resize-none"></textarea>
+              <button onclick="sendChatMessageFromAdmin()" id="btn-send-chat"
+                      class="px-4 py-3 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-900/40 flex items-center gap-1.5 transition whitespace-nowrap h-full">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                <span class="hidden sm:inline">Отправить</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -1078,6 +1171,9 @@ def get_admin_html() -> str:
       lessonsVerdictFilter: 'all',
       lessonsSearch: '',
       editingLessonId: null,
+      chatMessages: [],
+      chatReplyToMessageId: null,
+      chatAutoRefreshInterval: null,
       config: {},
       defaults: {}
     };
@@ -1208,6 +1304,7 @@ def get_admin_html() -> str:
     async function initializeApp() {
       await loadChats();
       await loadConfig();
+      setupChatAutoRefresh();
       switchTab('config');
     }
 
@@ -1235,6 +1332,7 @@ def get_admin_html() -> str:
     function onChatChanged() {
       const select = document.getElementById('global-chat-select');
       state.currentChatId = select.value;
+      if (state.activeTab === 'chat') loadChatMessages(true);
       if (state.activeTab === 'users') loadUsers();
       if (state.activeTab === 'lore') loadFactsAndLore();
       if (state.activeTab === 'agreements') loadAgreements();
@@ -1255,12 +1353,177 @@ def get_admin_html() -> str:
       const activePane = document.getElementById('tab-content-' + tabId);
       if (activePane) activePane.classList.remove('hidden');
 
+      if (tabId === 'chat') loadChatMessages(true);
       if (tabId === 'config') loadConfig();
       if (tabId === 'prompts') loadPrompts();
       if (tabId === 'users') loadUsers();
       if (tabId === 'lore') loadFactsAndLore();
       if (tabId === 'agreements') loadAgreements();
       if (tabId === 'lessons') loadLessons();
+    }
+
+    // --- TAB: CHAT & LIVE MESSAGES ---
+    async function loadChatMessages(manual = false) {
+      if (!state.currentChatId) return;
+      try {
+        const data = await apiRequest(`/api/admin/chats/${state.currentChatId}/messages?limit=60`);
+        state.chatMessages = data.messages || [];
+        renderChatMessages(state.chatMessages, manual);
+      } catch (err) {
+        if (manual) showToast('Ошибка загрузки сообщений: ' + err.message, 'error');
+      }
+    }
+
+    function renderChatMessages(messages, forceScroll = false) {
+      const container = document.getElementById('chat-messages-container');
+      if (!container) return;
+
+      const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 60;
+
+      if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="py-16 text-center text-slate-500 text-xs">В этом чате пока нет записанных сообщений</div>';
+        return;
+      }
+
+      container.innerHTML = messages.map(m => {
+        const isBot = m.is_bot || m.username === 'YOU (Snitch Bot)';
+        const author = escapeHtml(m.username || m.first_name || `ID ${m.user_id}`);
+        const text = escapeHtml(m.text || '');
+        const msgId = m.message_id;
+        const replyTo = m.reply_to;
+        const isReported = m.is_reported;
+        const points = m.points_awarded || 0;
+        const reportReason = escapeHtml(m.report_reason || '');
+
+        let timeStr = '';
+        if (m.timestamp) {
+          try {
+            const dt = new Date(m.timestamp);
+            timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+          } catch (e) {
+            timeStr = String(m.timestamp);
+          }
+        }
+
+        const replyBlock = replyTo ? `
+          <div class="mb-1 text-[10px] text-purple-300/80 bg-purple-950/30 px-2 py-0.5 rounded border-l-2 border-purple-500 truncate font-mono">
+            ↩️ Ответ на сообщение ID: ${escapeHtml(replyTo)}
+          </div>
+        ` : '';
+
+        const badgeBlock = (isReported || points > 0) ? `
+          <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              ⚖️ ${points > 0 ? `+${points} pts` : 'Репорт'} ${reportReason ? `— ${reportReason}` : ''}
+            </span>
+          </div>
+        ` : '';
+
+        return `
+          <div class="group flex gap-2.5 items-start ${isBot ? 'flex-row-reverse' : ''}">
+            <div class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${isBot ? 'bg-purple-600 text-white shadow-md shadow-purple-900/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+              ${isBot ? '🤖' : author.charAt(0).toUpperCase()}
+            </div>
+            <div class="max-w-[85%] sm:max-w-md ${isBot ? 'bg-purple-950/40 border border-purple-800/40' : 'bg-[#162032] border border-slate-800'} rounded-2xl px-3.5 py-2.5 shadow-md space-y-1">
+              <div class="flex items-center justify-between gap-3 text-[11px]">
+                <div class="flex items-center gap-1.5 font-semibold ${isBot ? 'text-purple-300' : 'text-slate-200'}">
+                  <span>${author}</span>
+                  ${isBot ? '<span class="px-1 rounded bg-purple-500/20 text-purple-300 text-[9px] font-mono">БОТ</span>' : ''}
+                </div>
+                <div class="flex items-center gap-1.5 text-slate-500 text-[10px]">
+                  <span>${timeStr}</span>
+                  <button type="button" onclick="setChatReply('${escapeHtml(msgId)}', '${escapeHtml(author)}', '${escapeHtml(text.slice(0, 30))}')"
+                          class="opacity-0 group-hover:opacity-100 transition px-1 py-0.5 rounded hover:bg-slate-700/60 text-purple-300 text-[10px]" title="Ответить на это сообщение">
+                    ↩️
+                  </button>
+                </div>
+              </div>
+              ${replyBlock}
+              <div class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap break-words">${text}</div>
+              ${badgeBlock}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (forceScroll || isScrolledToBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function setChatReply(msgId, author, textPreview) {
+      state.chatReplyToMessageId = msgId;
+      document.getElementById('chat-reply-author').textContent = author;
+      document.getElementById('chat-reply-preview').textContent = `"${textPreview}..."`;
+      document.getElementById('chat-reply-banner').classList.remove('hidden');
+      document.getElementById('chat-input-text').focus();
+    }
+
+    function cancelChatReply() {
+      state.chatReplyToMessageId = null;
+      document.getElementById('chat-reply-banner').classList.add('hidden');
+    }
+
+    function insertChatTemplate(templateText) {
+      const input = document.getElementById('chat-input-text');
+      input.value = templateText + input.value;
+      input.focus();
+    }
+
+    function handleChatInputKeydown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        sendChatMessageFromAdmin();
+      }
+    }
+
+    async function sendChatMessageFromAdmin() {
+      const textEl = document.getElementById('chat-input-text');
+      const text = textEl.value.trim();
+      if (!text) return;
+
+      if (!state.currentChatId) {
+        showToast('Чат не выбран', 'error');
+        return;
+      }
+
+      const parseMode = document.getElementById('chat-parse-mode').value;
+      const sendBtn = document.getElementById('btn-send-chat');
+      sendBtn.disabled = true;
+
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({
+            text: text,
+            parse_mode: parseMode,
+            reply_to_message_id: state.chatReplyToMessageId ? parseInt(state.chatReplyToMessageId) : null
+          })
+        });
+
+        textEl.value = '';
+        cancelChatReply();
+        showToast('Сообщение отправлено в Telegram!', 'success');
+        await loadChatMessages(true);
+      } catch (err) {
+        showToast('Ошибка отправки: ' + err.message, 'error');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    function setupChatAutoRefresh() {
+      if (state.chatAutoRefreshInterval) {
+        clearInterval(state.chatAutoRefreshInterval);
+      }
+      state.chatAutoRefreshInterval = setInterval(() => {
+        if (state.activeTab === 'chat') {
+          const autoRefreshChecked = document.getElementById('chat-auto-refresh')?.checked;
+          if (autoRefreshChecked) {
+            loadChatMessages(false);
+          }
+        }
+      }, 5000);
     }
 
     // --- TAB: CONFIG ---

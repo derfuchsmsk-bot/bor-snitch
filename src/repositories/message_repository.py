@@ -133,4 +133,18 @@ class MessageRepository:
         # Let's assume log_message handles it if passed in data.
         await self.log_message(chat_id, reaction_data)
 
+    async def get_latest_chat_messages(self, chat_id: int, limit: int = 50) -> List[dict]:
+        """
+        Fetches the latest N messages from the chat ordered chronologically for display.
+        """
+        messages_ref = self._get_messages_ref(str(chat_id))
+        query = messages_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(limit)
+        logs = []
+        async for doc in query.stream():
+            data = doc.to_dict()
+            data['message_id'] = doc.id
+            logs.append(data)
+        logs.reverse()
+        return logs
+
 message_repository = MessageRepository()

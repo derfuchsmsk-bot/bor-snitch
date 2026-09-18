@@ -12,6 +12,7 @@ from src.services.prompt_service import PromptService, PROMPT_METADATA
 from src.services.lore_service import LoreService
 from src.services.fact_service import FactService
 from src.repositories.user_repository import user_repository
+from src.repositories.message_repository import message_repository
 from src.repositories.fact_repository import fact_repository
 from src.repositories.agreement_repository import agreement_repository
 from src.repositories.lesson_repository import lesson_repository
@@ -137,6 +138,11 @@ class LessonUpdateRequest(BaseModel):
 
 class LessonStatusRequest(BaseModel):
     status: str
+
+class ChatSendMessageRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    parse_mode: Optional[str] = "HTML"
+    reply_to_message_id: Optional[int] = None
 
 class ActionChatRequest(BaseModel):
     chat_id: str
@@ -429,6 +435,64 @@ async def reset_user_false_reports(chat_id: str, user_id: str, admin=Depends(get
         "user_id": user_id,
         "false_report_count": 0
     }
+
+
+@router.get("/api/admin/chats/{chat_id}/messages")
+async def get_chat_messages(chat_id: str, limit: int = 50, admin=Depends(get_current_admin)):
+    """Fetches recent chat messages for live display in the admin panel."""
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    messages = await message_repository.get_latest_chat_messages(c_id, limit=min(limit, 100))
+    serialized = []
+    for m in messages:
+        entry = dict(m)
+        ts = entry.get("timestamp")
+        if hasattr(ts, "isoformat"):
+            entry["timestamp"] = ts.isoformat()
+        elif ts:
+            entry["timestamp"] = str(ts)
+        serialized.append(entry)
+
+    return {"chat_id": chat_id, "messages": serialized}
+
+
+@router.post("/api/admin/chats/{chat_id}/messages")
+async def send_chat_message(chat_id: str, body: ChatSendMessageRequest, admin=Depends(get_current_admin)):
+    """Sends a message to the specified Telegram chat on behalf of the bot."""
+    from src.main import bot
+    from src.services.db import log_message
+
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    try:
+        kwargs = {"chat_id": c_id, "text": body.text}
+        if body.parse_mode and body.parse_mode.lower() != "none":
+            kwargs["parse_mode"] = body.parse_mode
+        if body.reply_to_message_id:
+            kwargs["reply_to_message_id"] = body.reply_to_message_id
+
+        sent_msg = await bot.send_message(**kwargs)
+        try:
+            await log_message(sent_msg)
+        except Exception as e:
+            logger.warning(f"Could not log admin sent message: {e}")
+
+        return {
+            "status": "sent",
+            "message_id": sent_msg.message_id,
+            "chat_id": c_id,
+            "date": sent_msg.date.isoformat() if hasattr(sent_msg, 'date') else None,
+            "text": body.text
+        }
+    except Exception as e:
+        logger.error(f"Failed to send message to chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Не удалось отправить сообщение в Telegram: {str(e)}")
 
 
 @router.get("/api/admin/chats/{chat_id}/points_ledger")
