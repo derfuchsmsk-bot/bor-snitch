@@ -157,7 +157,7 @@ class VoiceDigestActionRequest(BaseModel):
 # --- Auth Endpoints ---
 
 @router.post("/api/admin/login")
-@limiter.limit("10/minute")
+@limiter.limit("30/minute")
 async def admin_login(request: Request, body: LoginRequest, response: Response):
     if not verify_admin_password(body.password):
         raise HTTPException(
@@ -173,7 +173,8 @@ async def admin_login(request: Request, body: LoginRequest, response: Response):
         max_age=TOKEN_EXPIRATION_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=is_https
+        secure=is_https,
+        path="/"
     )
     return {"status": "ok", "token": token}
 

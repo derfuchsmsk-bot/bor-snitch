@@ -1106,8 +1106,13 @@ def get_admin_html() -> str:
         'Content-Type': 'application/json',
         ...(options.headers || {})
       };
+      const token = localStorage.getItem('admin_token');
+      if (token) {
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
       const res = await fetch(endpoint, options);
       if (res.status === 401) {
+        localStorage.removeItem('admin_token');
         showLogin();
         throw new Error('Сессия истекла. Войдите снова.');
       }
@@ -1124,6 +1129,7 @@ def get_admin_html() -> str:
         await apiRequest('/api/admin/me');
         showDashboard();
       } catch (e) {
+        localStorage.removeItem('admin_token');
         showLogin();
       }
     }
@@ -1144,16 +1150,29 @@ def get_admin_html() -> str:
       const pwd = document.getElementById('login-password').value;
       const errBox = document.getElementById('login-error');
       errBox.classList.add('hidden');
+      const submitBtn = document.getElementById('login-submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.firstElementChild.textContent = 'Проверка...';
+      }
       try {
-        await apiRequest('/api/admin/login', {
+        const data = await apiRequest('/api/admin/login', {
           method: 'POST',
           body: JSON.stringify({ password: pwd })
         });
+        if (data && data.token) {
+          localStorage.setItem('admin_token', data.token);
+        }
         showToast('Успешный вход в систему');
         showDashboard();
       } catch (err) {
         errBox.textContent = err.message;
         errBox.classList.remove('hidden');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.firstElementChild.textContent = 'Войти в систему';
+        }
       }
     }
 
@@ -1161,6 +1180,7 @@ def get_admin_html() -> str:
       try {
         await apiRequest('/api/admin/logout', { method: 'POST' });
       } catch (e) {}
+      localStorage.removeItem('admin_token');
       showLogin();
     }
 
@@ -1600,7 +1620,6 @@ def get_admin_html() -> str:
       const textLines = achs.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join('\\n');
       document.getElementById('modal-achievements-text').value = textLines;
       openModal('modal-achievements');
-    }
     }
 
     async function submitAchievementsUpdate() {
