@@ -388,7 +388,7 @@ class ChatService:
                                     else:
                                         banner = f"\n\n👑 <b>Людской поступок: {points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
 
-                                    return comment_body + banner
+                                    return escape(comment_body) + banner
 
                 return comment_body
         except Exception as e:

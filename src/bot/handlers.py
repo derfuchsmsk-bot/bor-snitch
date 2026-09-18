@@ -398,7 +398,11 @@ async def handle_messages(message: types.Message):
 
     comment = await ChatService.process_cynical_comment(message, comment_text)
     if comment:
-        sent_msg = await message.reply(comment)
+        try:
+            sent_msg = await message.reply(comment, parse_mode="HTML")
+        except Exception as e:
+            logging.warning(f"Failed to reply with parse_mode=HTML: {e}, falling back to plain text")
+            sent_msg = await message.reply(comment)
         try:
             await log_message(sent_msg)
         except Exception as e:
