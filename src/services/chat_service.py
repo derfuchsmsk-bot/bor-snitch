@@ -1,10 +1,15 @@
 import random
 from datetime import datetime, timezone
+from typing import Optional, Tuple
 from ..utils.game_config import config
 from ..services import db
 from ..services import ai
 from ..services.mood_service import MoodService
 from ..services.dossier_service import DossierService
+from ..services.lore_service import LoreService
+from ..models.points import PointEvent
+from ..models.ai import CynicalCommentResult
+from ..utils.text import escape
 import logging
 
 class ChatService:
@@ -12,6 +17,7 @@ class ChatService:
     _last_comment_time = {}
     _last_user_comment_time = {}
     _last_reaction_time = {}
+    _last_spontaneous_judgment_time = {}
 
     @classmethod
     async def cleanup_old_cooldowns(cls):
@@ -26,6 +32,9 @@ class ChatService:
         for chat_id, last_time in list(cls._last_reaction_time.items()):
             if (now - last_time).total_seconds() > getattr(config, "REACTION_COOLDOWN_SECONDS", 120) * 3:
                 del cls._last_reaction_time[chat_id]
+        for chat_id, last_time in list(cls._last_spontaneous_judgment_time.items()):
+            if (now - last_time).total_seconds() > getattr(config, "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS", 180) * 3:
+                del cls._last_spontaneous_judgment_time[chat_id]
 
     @classmethod
     def should_react(cls, chat_id: int, text: str, stats: dict) -> tuple[bool, str]:
@@ -172,9 +181,55 @@ class ChatService:
         return random.random() < chance
 
     @classmethod
+    async def resolve_user(cls, chat_id: int, target_name: str, context_msgs: list) -> Tuple[Optional[int], str]:
+        """
+        Attempts to resolve target_name (username, first name, or lore alias) to (user_id, display_name).
+        """
+        if not target_name:
+            return None, ""
+
+        clean_name = target_name.strip().lstrip('@').lower()
+
+        # 1. Check in context messages
+        for msg in reversed(context_msgs or []):
+            u_name = str(msg.get('username') or '').lstrip('@').lower()
+            f_name = str(msg.get('first_name') or '').lower()
+            u_id = msg.get('user_id')
+            if u_id and (clean_name == u_name or clean_name in f_name or clean_name == f_name):
+                return int(u_id), msg.get('username') or msg.get('first_name') or str(u_id)
+
+        # 2. Check in chat user stats
+        try:
+            users, _ = await db.user_repository.get_chat_users(chat_id, limit=200)
+            for u in users:
+                u_name = str(u.get('username') or '').lstrip('@').lower()
+                f_name = str(u.get('full_name') or '').lower()
+                u_id = u.get('user_id')
+                if u_id and (clean_name == u_name or clean_name in f_name or clean_name == f_name):
+                    return int(u_id), u.get('username') or u.get('full_name') or str(u_id)
+
+            # 3. Check in Lore characters
+            lore_data = await LoreService.get_lore(chat_id)
+            core = lore_data.get('core', lore_data)
+            characters = core.get('characters', [])
+            for char in characters:
+                handle = str(char.get('handle') or '').lstrip('@').lower()
+                names = [str(n).lower() for n in char.get('names', [])]
+                if clean_name == handle or clean_name in names or any(clean_name in n for n in names):
+                    target_id = char.get('id')
+                    for u in users:
+                        u_name = str(u.get('username') or '').lstrip('@').lower()
+                        if (handle and u_name == handle) or (target_id and str(u.get('user_id')) == str(target_id)):
+                            return int(u.get('user_id')), u.get('username') or char.get('names', [''])[0] or str(u.get('user_id'))
+        except Exception as e:
+            logging.warning(f"Error resolving user: {e}")
+
+        return None, target_name
+
+    @classmethod
     async def process_cynical_comment(cls, message, comment_text: str):
         """
-        Processes a potential cynical comment with Fast & Slow attention logic.
+        Processes a potential cynical comment with Fast & Slow attention logic and spontaneous judgment.
         Returns the generated comment if one should be sent, else None.
         """
         if not comment_text or comment_text.startswith('/'):
@@ -223,17 +278,62 @@ class ChatService:
                 context_msgs = await db.get_recent_messages(chat_id, message.date, limit=12)
                 username = message.from_user.username or message.from_user.first_name
                 
-                comment = await ai.generate_cynical_comment(
+                result = await ai.generate_cynical_comment(
                     context_msgs, 
                     comment_text, 
                     username, 
                     chat_id=chat_id
                 )
                 
-                if comment:
-                    cls._last_comment_time[chat_id] = now
-                    cls._last_user_comment_time[(chat_id, user_id)] = now
-                    return comment
+                if not result:
+                    return None
+
+                comment_body = result.comment if isinstance(result, CynicalCommentResult) else str(result)
+                award_points = result.award_points if isinstance(result, CynicalCommentResult) else False
+                target_user_str = result.target_username if isinstance(result, CynicalCommentResult) else None
+                points_delta = result.points_delta if isinstance(result, CynicalCommentResult) else 0
+                verdict_reason = result.reason if isinstance(result, CynicalCommentResult) else None
+
+                cls._last_comment_time[chat_id] = now
+                cls._last_user_comment_time[(chat_id, user_id)] = now
+
+                # Spontaneous Judgment execution:
+                if (
+                    award_points and
+                    getattr(config, "SPONTANEOUS_JUDGMENT_ENABLED", True) and
+                    target_user_str and
+                    points_delta != 0
+                ):
+                    last_judgment = cls._last_spontaneous_judgment_time.get(chat_id)
+                    cooldown = getattr(config, "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS", 180)
+
+                    if not last_judgment or (now - last_judgment).total_seconds() >= cooldown:
+                        target_id, resolved_name = await cls.resolve_user(chat_id, target_user_str, context_msgs)
+                        if target_id and target_id != bot_user.id:
+                            event_id = f"spontaneous:{chat_id}:{target_id}:{message.message_id}"
+                            event = PointEvent(
+                                event_id=event_id,
+                                chat_id=str(chat_id),
+                                user_id=str(target_id),
+                                points_delta=points_delta,
+                                event_type="spontaneous_verdict",
+                                reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
+                                season_id="global"
+                            )
+                            await db.user_repository.apply_point_event_transactional(chat_id, event)
+                            cls._last_spontaneous_judgment_time[chat_id] = now
+
+                            tag_display = f"@{resolved_name}" if not str(resolved_name).startswith('@') else resolved_name
+                            clean_reason = escape(verdict_reason or ("Масть" if points_delta > 0 else "Людское"))
+
+                            if points_delta > 0:
+                                banner = f"\n\n⚖️ <b>Вердикт Смотрящего: +{points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+                            else:
+                                banner = f"\n\n👑 <b>Людской поступок: {points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+
+                            return comment_body + banner
+
+                return comment_body
         except Exception as e:
             logging.error(f"Error in process_cynical_comment: {e}")
             

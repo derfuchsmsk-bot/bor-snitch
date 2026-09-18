@@ -28,8 +28,29 @@ class ReportService:
         next_msgs = await db.get_subsequent_messages(chat_id, reported_msg.date, limit=config.REPORT_NEXT_CONTEXT_LIMIT)
         context_msgs = prev_msgs + next_msgs
 
+        # Extract target username
+        target_username = (
+            getattr(reported_msg.from_user, "username", None) or
+            getattr(reported_msg.from_user, "full_name", None) or
+            getattr(reported_msg.from_user, "first_name", None) or
+            "Unknown"
+        )
+
+        # Extract reporter comment/complaint if provided (e.g. /report слился с навесика)
+        reporter_comment = None
+        if hasattr(message, "text") and message.text:
+            parts = message.text.split(maxsplit=1)
+            if len(parts) > 1 and parts[1].strip():
+                reporter_comment = parts[1].strip()
+
         # 3. AI Validation
-        result = await ai.validate_report(target_text, context_msgs, chat_id=chat_id)
+        result = await ai.validate_report(
+            target_text,
+            context_msgs,
+            chat_id=chat_id,
+            target_username=target_username,
+            reporter_comment=reporter_comment
+        )
 
         # 4. Handle Technical / Infrastructure Error (DO NOT penalize user!)
         if not result or result.status == "technical_error":

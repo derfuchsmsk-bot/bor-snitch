@@ -226,6 +226,14 @@ class UserRepository:
         transaction = self.db.transaction()
         return await _txn(transaction)
 
+    async def reset_false_report_count(self, chat_id: int, user_id: int) -> int:
+        """
+        Resets the false report counter to 0.
+        """
+        ref = self._get_user_ref(chat_id, user_id)
+        await ref.set({"false_report_count": 0}, merge=True)
+        return 0
+
     async def get_weekly_points_for_chat(self, chat_id: int, week_key: str) -> dict:
         """
         Sums positive points received by users in the chat during the given week.

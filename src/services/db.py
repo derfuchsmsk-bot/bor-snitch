@@ -500,6 +500,13 @@ async def increment_false_report_count(chat_id: int, user_id: int):
     warnings.warn("increment_false_report_count is deprecated, use user_repository.increment_false_report_count instead", DeprecationWarning, stacklevel=2)
     return await user_repository.increment_false_report_count(chat_id, user_id)
 
+async def reset_false_report_count(chat_id: int, user_id: int):
+    """
+    [DEPRECATED] Resets the false report counter to 0.
+    """
+    warnings.warn("reset_false_report_count is deprecated, use user_repository.reset_false_report_count instead", DeprecationWarning, stacklevel=2)
+    return await user_repository.reset_false_report_count(chat_id, user_id)
+
 async def add_points(chat_id: int, user_id: int, points: int):
     """
     [DEPRECATED] Applies immediate points (penalty or reward).

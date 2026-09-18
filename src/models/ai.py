@@ -63,3 +63,10 @@ class FeedbackAnalysisResult(BaseModel):
     verdict: str = Field(description="справедливо | ошибка | непонятно")
     reasoning: str = Field(description="Обоснование оценки реакции")
     learned_rule: Optional[str] = Field(None, description="Сформулированное правило поведения, если нужно")
+
+class CynicalCommentResult(BaseModel):
+    comment: str = Field(description="Текст комментария (1-2 емких предложения)")
+    award_points: bool = Field(default=False, description="Вынести ли официальный судебный вердикт прямо сейчас")
+    target_username: Optional[str] = Field(None, description="Username или имя участника для начисления/снятия очков")
+    points_delta: int = Field(default=0, description="Дельта очков (+25..+75 за масть, -25..-50 за людское)")
+    reason: Optional[str] = Field(None, description="Краткая причина вердикта")

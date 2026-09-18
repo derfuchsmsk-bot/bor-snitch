@@ -26,7 +26,8 @@ from src.models.ai import (
     DailyAnalysisResult,
     ReportValidationResult,
     FactValidationResult,
-    MemorySummaryResult
+    MemorySummaryResult,
+    CynicalCommentResult
 )
 import json
 import logging
@@ -52,9 +53,15 @@ try:
 except ImportError:
     comment_cache = {}
 
-async def validate_report(target_text, context_msgs=None, chat_id=None) -> ReportValidationResult:
+async def validate_report(
+    target_text,
+    context_msgs=None,
+    chat_id=None,
+    target_username=None,
+    reporter_comment=None
+) -> ReportValidationResult:
     """
-    Checks if a reported message is actually a violation, considering context.
+    Checks if a reported message is actually a violation, considering context, lore, and active agreements.
     Returns ReportValidationResult object.
     """
     if not target_text:
@@ -67,6 +74,30 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
+    lore_json = "{}"
+    if chat_id:
+        try:
+            lore_full = await LoreService.get_lore(chat_id)
+            lore_core = lore_full.get('core', lore_full)
+            lore_json = json.dumps(lore_core, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.warning(f"Could not load lore for chat {chat_id} in report validation: {e}")
+
+    agreements_text = "Нет действующих договоренностей."
+    if chat_id:
+        try:
+            from src.repositories.agreement_repository import agreement_repository
+            agreements = await agreement_repository.get_active_agreements(chat_id)
+            if agreements:
+                lines = []
+                for ag in agreements:
+                    ag_users = ", ".join(ag.get('users', [])) if ag.get('users') else "Все"
+                    ag_type = ag.get('type', 'action')
+                    lines.append(f"- [ID: {ag.get('id')}] {ag_users}: {ag.get('text')} (Тип: {ag_type})")
+                agreements_text = "\n".join(lines)
+        except Exception as e:
+            logging.warning(f"Could not load agreements for chat {chat_id} in report validation: {e}")
+
     context_str = ""
     if context_msgs:
         context_str = "КОНТЕКСТ (Предыдущие сообщения):\n"
@@ -92,11 +123,14 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
             context_str += f"- {name} {time_str}: {txt}\n"
         context_str += "\n"
 
+    target_info = f" (автор: {target_username})" if target_username else ""
+    reporter_comment_str = f"\nПРЕТЕНЗИЯ/ЖАЛОБА ДОНОСЧИКА: \"{reporter_comment}\"\n" if reporter_comment else ""
+
     prompt = f"""
-    {context_str}
-    СООБЩЕНИЕ НА ПРОВЕРКУ (REPORTED MESSAGE):
-    "{target_text}"
-    """
+{context_str}
+СООБЩЕНИЕ НА ПРОВЕРКУ (REPORTED MESSAGE){target_info}:
+"{target_text}"{reporter_comment_str}
+"""
     
     @retry(
         stop=stop_after_attempt(3),
@@ -108,7 +142,7 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
         report_schema = {
             "type": "OBJECT",
             "properties": {
-                "thought_process": {"type": "STRING", "description": "Размышления о контексте"},
+                "thought_process": {"type": "STRING", "description": "Размышления о контексте, договоренностях и понятиях масти"},
                 "valid": {"type": "BOOLEAN", "description": "Valid complaint?"},
                 "category": {"type": "STRING", "description": "Toxicity | Snitching"},
                 "points": {"type": "INTEGER", "description": "Points"},
@@ -117,8 +151,13 @@ async def validate_report(target_text, context_msgs=None, chat_id=None) -> Repor
             "required": ["thought_process", "valid", "reason"]
         }
 
+        validation_system_prompt = get_report_validation_prompt(
+            lore_json=lore_json,
+            active_agreements=agreements_text
+        )
+
         return await model.generate_content_async(
-            contents=[get_report_validation_prompt(), prompt],
+            contents=[validation_system_prompt, prompt],
             generation_config={
                 "response_mime_type": "application/json",
                 "response_schema": report_schema
@@ -473,9 +512,10 @@ async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummar
         logging.error(f"Error during summarization: {e}")
     return None
 
-async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown", chat_id=None):
+async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown", chat_id=None) -> Optional[CynicalCommentResult]:
     """
-    Generates a short, cynical comment based on context.
+    Generates a short, cynical comment based on context, optionally with spontaneous judgment.
+    Returns CynicalCommentResult or None.
     """
     import hashlib
     # Deterministic cache key based on chat, normalized text, and signature of latest messages
@@ -528,6 +568,33 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         context_str_lore = lore_full.get('current_context', "")
         social_context = await DossierService.get_social_graph_context(chat_id, filter_user_ids=active_user_ids) if chat_id else ""
         
+        comment_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "comment": {
+                    "type": "STRING",
+                    "description": "1-2 коротких, едких, живых предложения подкола"
+                },
+                "award_points": {
+                    "type": "BOOLEAN",
+                    "description": "Вынести ли официальный судебный вердикт прямо сейчас (True только при явной масти/сливе/косяке или людском поступке)"
+                },
+                "target_username": {
+                    "type": "STRING",
+                    "description": "Username, имя или кличка нарушителя/героя без символа @"
+                },
+                "points_delta": {
+                    "type": "INTEGER",
+                    "description": "Дельта очков (+25..+75 за масть, -25..-50 за людское)"
+                },
+                "reason": {
+                    "type": "STRING",
+                    "description": "Краткая емкая причина вердикта"
+                }
+            },
+            "required": ["comment", "award_points"]
+        }
+
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=6),
@@ -545,13 +612,23 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
                         social_context=social_context
                     ), 
                     prompt
-                ]
+                ],
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "response_schema": comment_schema
+                }
             )
 
         response = await _generate_with_retry()
-        comment = response.text.strip()
-        comment_cache[cache_key] = comment
-        return comment
+        raw_text = response.text.strip()
+        try:
+            data = json.loads(raw_text)
+            result = CynicalCommentResult(**data)
+        except Exception:
+            result = CynicalCommentResult(comment=raw_text, award_points=False)
+
+        comment_cache[cache_key] = result
+        return result
     except Exception as e:
         logging.error(f"Error generating comment: {e}")
         return None

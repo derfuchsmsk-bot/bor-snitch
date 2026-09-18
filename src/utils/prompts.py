@@ -10,8 +10,8 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
         lessons=lessons
     )
 
-def get_report_validation_prompt() -> str:
-    return PromptService.format_report_validation_prompt()
+def get_report_validation_prompt(lore_json: str = "{}", active_agreements: str = "") -> str:
+    return PromptService.format_report_validation_prompt(lore_json=lore_json, active_agreements=active_agreements)
 
 def get_cynical_comment_prompt(
     lore_json: str,

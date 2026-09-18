@@ -7,7 +7,7 @@ class PointEvent(BaseModel):
     chat_id: str
     user_id: str
     points_delta: int
-    event_type: str = Field(description="report | gamble | daily_analysis | afk | weekly_amnesty | appeal | admin_adjust")
+    event_type: str = Field(description="report | gamble | daily_analysis | afk | weekly_amnesty | appeal | admin_adjust | spontaneous_verdict")
     reason: Optional[str] = None
     season_id: str = "global"
     week_key: Optional[str] = Field(default_factory=lambda: PointEvent.current_week_key())
