@@ -279,4 +279,49 @@ def test_admin_ui_contains_xss_protection():
     assert "escapeHtml(u.full_name || username)" in resp.text
     assert "escapeHtml(f.text)" in resp.text
     assert "escapeHtml(ag.text || '—')" in resp.text
+    assert "cfg-SPONTANEOUS_JUDGMENT_ENABLED" in resp.text
+    assert "resetFalseReports" in resp.text
+
+
+def test_reset_user_false_reports_endpoint():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.admin.router.user_repository.reset_false_report_count", new_callable=AsyncMock) as mock_reset:
+        mock_reset.return_value = 0
+        resp = client.post(
+            f"/api/admin/chats/{settings.MAIN_CHAT_ID}/users/12345/reset_false_reports",
+            headers=headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+        assert resp.json()["false_report_count"] == 0
+        mock_reset.assert_called_once_with(int(settings.MAIN_CHAT_ID), 12345)
+
+
+def test_config_spontaneous_judgment_update():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.admin.router.ConfigService.save_config", new_callable=AsyncMock) as mock_save:
+        async def fake_save(updates):
+            config.update_from_dict(updates)
+            return config.to_dict()
+        mock_save.side_effect = fake_save
+
+        resp = client.put(
+            "/api/admin/config",
+            json={
+                "SPONTANEOUS_JUDGMENT_ENABLED": True,
+                "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS": 240,
+                "REPORT_CONTEXT_LIMIT": 40,
+                "REPORT_NEXT_CONTEXT_LIMIT": 10
+            },
+            headers=headers
+        )
+        assert resp.status_code == 200
+        assert config.SPONTANEOUS_JUDGMENT_ENABLED is True
+        assert config.SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS == 240
+        assert config.REPORT_CONTEXT_LIMIT == 40
+        assert config.REPORT_NEXT_CONTEXT_LIMIT == 10
 

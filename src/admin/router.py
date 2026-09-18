@@ -89,6 +89,8 @@ class ConfigUpdateRequest(BaseModel):
     REPORT_CONTEXT_LIMIT: Optional[int] = Field(None, ge=1, le=200)
     REPORT_NEXT_CONTEXT_LIMIT: Optional[int] = Field(None, ge=0, le=50)
     MENTION_CHUNK_SIZE: Optional[int] = Field(None, ge=1, le=200)
+    SPONTANEOUS_JUDGMENT_ENABLED: Optional[bool] = None
+    SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS: Optional[int] = Field(None, ge=10, le=3600)
     ENABLE_AGREEMENTS: Optional[bool] = None
     AGREEMENT_DISPUTE_WINDOW_MINUTES: Optional[int] = Field(None, ge=1, le=1440)
     AGREEMENT_DEFAULT_LIFESPAN_HOURS: Optional[int] = Field(None, ge=1, le=8760)
@@ -408,6 +410,24 @@ async def update_user_achievements(chat_id: str, user_id: str, body: Achievement
     return {
         "status": "success",
         "achievements": achievements
+    }
+
+
+@router.post("/api/admin/chats/{chat_id}/users/{user_id}/reset_false_reports")
+async def reset_user_false_reports(chat_id: str, user_id: str, admin=Depends(get_current_admin)):
+    """Resets the false report strike counter for a user to 0."""
+    try:
+        c_id = int(chat_id)
+        u_id = int(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id or user_id format")
+
+    await user_repository.reset_false_report_count(c_id, u_id)
+    return {
+        "status": "success",
+        "chat_id": chat_id,
+        "user_id": user_id,
+        "false_report_count": 0
     }
 
 

@@ -316,6 +316,21 @@ def get_admin_html() -> str:
               <label class="block text-xs font-medium text-slate-400 mb-1">Кулдаун комментария (сек)</label>
               <input type="number" id="cfg-CYNICAL_COMMENT_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
             </div>
+
+            <div class="pt-3 border-t border-slate-800 space-y-3">
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-white">Спонтанное правосудие (ИИ)</div>
+                  <div class="text-[10px] text-slate-400">Бот сам начисляет очки за масть/людское в диалоге</div>
+                </div>
+                <input type="checkbox" id="cfg-SPONTANEOUS_JUDGMENT_ENABLED" class="w-5 h-5 accent-purple-500 rounded cursor-pointer">
+              </label>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Кулдаун спонтанных вердиктов (сек)</label>
+                <input type="number" id="cfg-SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+              </div>
+            </div>
           </div>
 
           <!-- Card: Automatic Emoji Reactions -->
@@ -415,7 +430,7 @@ def get_admin_html() -> str:
               Контекст, Лимиты и Слово Пацана (Договоренности)
             </h3>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer h-full">
                   <div>
@@ -427,8 +442,13 @@ def get_admin_html() -> str:
               </div>
 
               <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">Лимит контекста репорта (сообщ.)</label>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Контекст до репорта (сообщ.)</label>
                 <input type="number" id="cfg-REPORT_CONTEXT_LIMIT" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Контекст после репорта (сообщ.)</label>
+                <input type="number" id="cfg-REPORT_NEXT_CONTEXT_LIMIT" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
               </div>
 
               <div>
@@ -1502,13 +1522,17 @@ def get_admin_html() -> str:
         const points = stats.total_points || 0;
         const rank = stats.current_rank || 'Порядочный 😐';
         const achievements = stats.achievements || [];
+        const falseReports = stats.false_report_count || 0;
         const username = u.username ? `@${u.username}` : (u.full_name || `ID ${u.user_id}`);
 
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-800/40 transition';
         tr.innerHTML = `
           <td class="py-3 px-4">
-            <div class="font-bold text-white text-xs">${escapeHtml(u.full_name || username)}</div>
+            <div class="font-bold text-white text-xs flex items-center gap-2">
+              <span>${escapeHtml(u.full_name || username)}</span>
+              ${falseReports > 0 ? `<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-mono border border-rose-500/30 cursor-pointer" title="Ложных доносов: ${falseReports}. Нажмите для сброса" onclick="resetFalseReports('${escapeHtml(u.user_id)}')">⚠️ ${falseReports} страйк</span>` : ''}
+            </div>
             <div class="text-[10px] text-slate-400 font-mono">${escapeHtml(username)} <span class="text-slate-600">(${escapeHtml(u.user_id)})</span></div>
           </td>
           <td class="py-3 px-4 text-center">
@@ -1528,6 +1552,10 @@ def get_admin_html() -> str:
           </td>
           <td class="py-3 px-4 text-right">
             <div class="inline-flex items-center gap-1">
+              ${falseReports > 0 ? `
+              <button onclick="resetFalseReports('${escapeHtml(u.user_id)}')" title="Сбросить страйки (${falseReports})"
+                      class="px-2 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800/50 text-rose-300 font-mono text-[11px] font-bold">Сброс страйков</button>
+              ` : ''}
               <button onclick="quickAdjustPoints('${escapeHtml(u.user_id)}', 25)" title="+25 очков (Токсичность)"
                       class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-400 font-mono text-[11px] font-bold">+25</button>
               <button onclick="quickAdjustPoints('${escapeHtml(u.user_id)}', -25)" title="-25 очков"
@@ -1564,6 +1592,19 @@ def get_admin_html() -> str:
           })
         });
         showToast(`Очки обновлены (${delta > 0 ? '+' : ''}${delta})`);
+        await loadUsers();
+      } catch (err) {
+        showToast('Ошибка: ' + err.message, 'error');
+      }
+    }
+
+    async function resetFalseReports(userId) {
+      if (!confirm('Сбросить счетчик ложных доносов для этого пользователя до 0?')) return;
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/users/${userId}/reset_false_reports`, {
+          method: 'POST'
+        });
+        showToast('Страйки ложных доносов сброшены!', 'success');
         await loadUsers();
       } catch (err) {
         showToast('Ошибка: ' + err.message, 'error');
