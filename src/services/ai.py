@@ -1,6 +1,8 @@
+from __future__ import annotations
 import vertexai
 from vertexai.generative_models import GenerativeModel, SafetySetting, Part
 import logging
+from typing import Optional, List, Dict, Any, Tuple
 from tenacity import (
     retry,
     stop_after_attempt,

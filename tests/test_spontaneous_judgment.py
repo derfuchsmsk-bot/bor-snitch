@@ -39,6 +39,20 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(uid, 991728230)
         self.assertIn("ioann_thegreat", name)
 
+        # Match by Russian inflected name ("Сене" -> "Сеня" / "Паштет")
+        mock_lore.return_value = {
+            "core": {
+                "characters": [
+                    {"id": "383998331", "handle": "arsinov", "names": ["Паштет", "Сеня"]}
+                ]
+            }
+        }
+        mock_users.return_value = ([
+            {"user_id": "383998331", "username": "arsinov", "full_name": "Паштет 🍷 воздух"}
+        ], None)
+        uid, name = await ChatService.resolve_user(-1001, "Сене", [])
+        self.assertEqual(uid, 383998331)
+
     @patch("src.services.chat_service.db")
     @patch("src.services.chat_service.ai")
     async def test_process_cynical_comment_spontaneous_penalty(self, mock_ai, mock_db):
@@ -159,6 +173,61 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(success)
         self.assertEqual(reply, messages.REPORT_ALREADY_PROCESSED)
+
+    @patch("src.services.chat_service.db")
+    @patch("src.services.chat_service.ai")
+    @patch("src.services.chat_service.LoreService.get_lore")
+    async def test_process_cynical_comment_spontaneous_reward_deduction(self, mock_lore, mock_ai, mock_db):
+        mock_msg = MagicMock()
+        mock_msg.chat.id = -100123
+        mock_msg.from_user.id = 555
+        mock_msg.from_user.username = "elisei"
+        mock_msg.message_id = 99
+        mock_msg.date = datetime.now(timezone.utc)
+        mock_msg.text = "А ты Сене не хочешь снять очки? @snitch_sayonara_bot он все по факту зарепортил"
+        mock_msg.reply_to_message = None
+
+        mock_bot = MagicMock()
+        mock_bot.id = 999
+        mock_bot.username = "snitch_sayonara_bot"
+        mock_msg.bot.get_me = AsyncMock(return_value=mock_bot)
+
+        mock_lore.return_value = {
+            "core": {
+                "characters": [
+                    {"id": "383998331", "handle": "arsinov", "names": ["Паштет", "Сеня"]}
+                ]
+            }
+        }
+
+        mock_db.get_user_stats = AsyncMock(return_value={"total_points": 50})
+        mock_db.get_recent_messages = AsyncMock(return_value=[])
+        mock_db.user_repository.get_chat_users = AsyncMock(return_value=([
+            {"user_id": "383998331", "username": "arsinov", "full_name": "Паштет 🍷 воздух"}
+        ], None))
+        mock_db.user_repository.apply_point_event_transactional = AsyncMock(return_value={"applied": True})
+
+        mock_ai.generate_cynical_comment = AsyncMock(return_value=CynicalCommentResult(
+            comment="Списал по красоте. Сеня, с тебя пиво на навесе за такой царский подгон.",
+            award_points=True,
+            target_username="Сене",
+            points_delta=-25,
+            reason="За верный донос и правильные движения"
+        ))
+
+        reply = await ChatService.process_cynical_comment(mock_msg, mock_msg.text)
+
+        self.assertIsNotNone(reply)
+        self.assertIn("Списал по красоте", reply)
+        self.assertIn("Людской поступок: -25 pts @arsinov", reply)
+        self.assertIn("За верный донос", reply)
+
+        # Verify negative points were applied
+        mock_db.user_repository.apply_point_event_transactional.assert_called_once()
+        call_event = mock_db.user_repository.apply_point_event_transactional.call_args[0][1]
+        self.assertEqual(call_event.points_delta, -25)
+        self.assertEqual(call_event.user_id, "383998331")
+        self.assertEqual(call_event.event_type, "spontaneous_verdict")
 
     @patch("src.services.chat_service.db")
     @patch("src.services.chat_service.ai")

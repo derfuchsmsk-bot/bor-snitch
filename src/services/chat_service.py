@@ -181,22 +181,34 @@ class ChatService:
         return random.random() < chance
 
     @classmethod
+    def _get_name_variants(cls, name: str) -> list:
+        clean = name.strip().lstrip('@').lower()
+        variants = {clean}
+        # Common Russian declension endings (Сене -> сен, Паштету -> паштет, Любецкого -> любецк)
+        for ending in ('ого', 'его', 'ому', 'ему', 'ом', 'ем', 'ой', 'ей', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и'):
+            if clean.endswith(ending) and len(clean) - len(ending) >= 3:
+                variants.add(clean[:-len(ending)])
+        return list(variants)
+
+    @classmethod
     async def resolve_user(cls, chat_id: int, target_name: str, context_msgs: list) -> Tuple[Optional[int], str]:
         """
-        Attempts to resolve target_name (username, first name, or lore alias) to (user_id, display_name).
+        Attempts to resolve target_name (username, first name, or lore alias, with Russian inflections) to (user_id, display_name).
         """
         if not target_name:
             return None, ""
 
-        clean_name = target_name.strip().lstrip('@').lower()
+        variants = cls._get_name_variants(target_name)
 
         # 1. Check in context messages
         for msg in reversed(context_msgs or []):
             u_name = str(msg.get('username') or '').lstrip('@').lower()
             f_name = str(msg.get('first_name') or '').lower()
             u_id = msg.get('user_id')
-            if u_id and (clean_name == u_name or clean_name in f_name or clean_name == f_name):
-                return int(u_id), msg.get('username') or msg.get('first_name') or str(u_id)
+            if u_id:
+                for v in variants:
+                    if v == u_name or v in f_name or f_name.startswith(v):
+                        return int(u_id), msg.get('username') or msg.get('first_name') or str(u_id)
 
         # 2. Check in chat user stats
         try:
@@ -205,8 +217,10 @@ class ChatService:
                 u_name = str(u.get('username') or '').lstrip('@').lower()
                 f_name = str(u.get('full_name') or '').lower()
                 u_id = u.get('user_id')
-                if u_id and (clean_name == u_name or clean_name in f_name or clean_name == f_name):
-                    return int(u_id), u.get('username') or u.get('full_name') or str(u_id)
+                if u_id:
+                    for v in variants:
+                        if v == u_name or v in f_name or f_name.startswith(v):
+                            return int(u_id), u.get('username') or u.get('full_name') or str(u_id)
 
             # 3. Check in Lore characters
             lore_data = await LoreService.get_lore(chat_id)
@@ -214,12 +228,25 @@ class ChatService:
             characters = core.get('characters', [])
             for char in characters:
                 handle = str(char.get('handle') or '').lstrip('@').lower()
-                names = [str(n).lower() for n in char.get('names', [])]
-                if clean_name == handle or clean_name in names or any(clean_name in n for n in names):
+                char_names = [str(n).lower() for n in char.get('names', [])]
+                
+                # Check if target_name matches handle or any lore name variant
+                matched_char = False
+                for v in variants:
+                    if v == handle or any(v in n or n.startswith(v) for n in char_names):
+                        matched_char = True
+                        break
+
+                if matched_char:
                     target_id = char.get('id')
                     for u in users:
                         u_name = str(u.get('username') or '').lstrip('@').lower()
-                        if (handle and u_name == handle) or (target_id and str(u.get('user_id')) == str(target_id)):
+                        u_fullname = str(u.get('full_name') or '').lower()
+                        if (
+                            (handle and u_name == handle) or
+                            (target_id and str(u.get('user_id')) == str(target_id)) or
+                            any(n and (n in u_fullname or u_fullname.startswith(n) or n in u_name) for n in char_names)
+                        ):
                             return int(u.get('user_id')), u.get('username') or char.get('names', [''])[0] or str(u.get('user_id'))
         except Exception as e:
             logging.warning(f"Error resolving user: {e}")
@@ -307,7 +334,8 @@ class ChatService:
                     last_judgment = cls._last_spontaneous_judgment_time.get(chat_id)
                     cooldown = getattr(config, "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS", 180)
 
-                    if not last_judgment or (now - last_judgment).total_seconds() >= cooldown:
+                    # Direct mentions and replies to the bot bypass cooldown
+                    if is_mentioned or not last_judgment or (now - last_judgment).total_seconds() >= cooldown:
                         target_id, resolved_name = await cls.resolve_user(chat_id, target_user_str, context_msgs)
                         if target_id and target_id != bot_user.id:
                             # Locate the offending/target message in context
@@ -319,15 +347,15 @@ class ChatService:
 
                             target_msg_id = (target_msg.get('message_id') if target_msg else None) or getattr(message, 'message_id', None)
 
-                            # Deduplication check: was this specific message already reported or scored?
+                            # Deduplication check: only applies to penalties (points_delta > 0) to avoid double-scoring an infraction
                             already_scored = False
-                            if target_msg_id:
+                            if points_delta > 0 and target_msg_id:
                                 existing = await db.message_repository.get_message(chat_id, target_msg_id)
                                 if existing and (existing.get("points_awarded", 0) > 0 or existing.get("is_reported")):
                                     already_scored = True
 
                             if not already_scored:
-                                event_id = f"spontaneous:{chat_id}:{target_id}:{target_msg_id}"
+                                event_id = f"spontaneous:{chat_id}:{target_id}:{target_msg_id if points_delta > 0 else message.message_id}"
                                 event = PointEvent(
                                     event_id=event_id,
                                     chat_id=str(chat_id),
@@ -341,13 +369,13 @@ class ChatService:
                                 if apply_res.get("applied") and not apply_res.get("already_processed"):
                                     cls._last_spontaneous_judgment_time[chat_id] = now
 
-                                    # Flag the message in DB so /report and daily analysis will NOT double-charge!
-                                    if target_msg_id:
+                                    # Flag the message in DB only for infractions so /report and daily analysis will NOT double-charge!
+                                    if points_delta > 0 and target_msg_id:
                                         await db.message_repository.mark_message_reported(
                                             chat_id=chat_id,
                                             msg_id=target_msg_id,
                                             reporter_id=bot_user.id,
-                                            reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
+                                            reason=verdict_reason or "Масть",
                                             points_awarded=points_delta,
                                             ai_thought_process=f"Spontaneous verdict in chat: {comment_body}"
                                         )
