@@ -58,10 +58,12 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
 
         mock_db.get_user_stats = AsyncMock(return_value={"total_points": 10})
         mock_db.get_recent_messages = AsyncMock(return_value=[
-            {"user_id": 991728230, "username": "ioann_thegreat", "first_name": "Ваня", "text": "Я минус"}
+            {"message_id": 101, "user_id": 991728230, "username": "ioann_thegreat", "first_name": "Ваня", "text": "Я минус"}
         ])
         mock_db.user_repository.get_chat_users = AsyncMock(return_value=([], None))
         mock_db.user_repository.apply_point_event_transactional = AsyncMock(return_value={"applied": True})
+        mock_db.message_repository.get_message = AsyncMock(return_value=None)
+        mock_db.message_repository.mark_message_reported = AsyncMock()
 
         mock_ai.generate_cynical_comment = AsyncMock(return_value=CynicalCommentResult(
             comment="Классика: на словах готов рвать, а по факту слился.",
@@ -84,6 +86,79 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_event.points_delta, 50)
         self.assertEqual(call_event.user_id, "991728230")
         self.assertEqual(call_event.event_type, "spontaneous_verdict")
+
+        # Verify message was flagged in message_repository so /report and daily analysis will not double-score
+        mock_db.message_repository.mark_message_reported.assert_called_once()
+
+    @patch("src.services.chat_service.db")
+    @patch("src.services.chat_service.ai")
+    async def test_process_cynical_comment_deduplicates_if_already_scored(self, mock_ai, mock_db):
+        mock_msg = MagicMock()
+        mock_msg.chat.id = -100123
+        mock_msg.from_user.id = 555
+        mock_msg.from_user.username = "elisei"
+        mock_msg.message_id = 45
+        mock_msg.date = datetime.now(timezone.utc)
+        mock_msg.text = "@snitch_sayonara_bot как тебе такие мувы от Мастецкого?"
+        mock_msg.reply_to_message = None
+
+        mock_bot = MagicMock()
+        mock_bot.id = 999
+        mock_bot.username = "snitch_sayonara_bot"
+        mock_msg.bot.get_me = AsyncMock(return_value=mock_bot)
+
+        mock_db.get_user_stats = AsyncMock(return_value={"total_points": 10})
+        mock_db.get_recent_messages = AsyncMock(return_value=[
+            {"message_id": 101, "user_id": 991728230, "username": "ioann_thegreat", "text": "Я минус"}
+        ])
+        mock_db.user_repository.get_chat_users = AsyncMock(return_value=([], None))
+
+        # Simulate that message 101 was ALREADY scored
+        mock_db.message_repository.get_message = AsyncMock(return_value={
+            "is_reported": True,
+            "points_awarded": 50
+        })
+
+        mock_ai.generate_cynical_comment = AsyncMock(return_value=CynicalCommentResult(
+            comment="Классика, он всегда так делает.",
+            award_points=True,
+            target_username="ioann_thegreat",
+            points_delta=50,
+            reason="Слив с планов"
+        ))
+
+        reply = await ChatService.process_cynical_comment(mock_msg, mock_msg.text)
+
+        # Should return only comment text WITHOUT awarding points again
+        self.assertEqual(reply, "Классика, он всегда так делает.")
+        mock_db.user_repository.apply_point_event_transactional.assert_not_called()
+        mock_db.message_repository.mark_message_reported.assert_not_called()
+
+    @patch("src.services.report_service.db")
+    async def test_subsequent_report_is_blocked_after_spontaneous_judgment(self, mock_report_db):
+        from src.services.report_service import ReportService
+        from src.utils import messages
+
+        # Message already marked by spontaneous judgment
+        mock_report_db.message_repository.get_message = AsyncMock(return_value={
+            "is_reported": True,
+            "points_awarded": 50,
+            "report_reason": "Спонтанный вердикт: Слив с договоренности"
+        })
+
+        mock_msg = MagicMock()
+        mock_msg.chat.id = -100123
+        mock_msg.from_user.id = 555
+        mock_msg.text = "/report"
+
+        mock_reported_msg = MagicMock()
+        mock_reported_msg.message_id = 101
+        mock_reported_msg.from_user.id = 991728230
+
+        reply, success = await ReportService.process_report(mock_msg, mock_reported_msg, "Я минус")
+
+        self.assertFalse(success)
+        self.assertEqual(reply, messages.REPORT_ALREADY_PROCESSED)
 
     @patch("src.services.chat_service.db")
     @patch("src.services.chat_service.ai")

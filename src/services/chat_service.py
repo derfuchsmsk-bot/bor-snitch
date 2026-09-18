@@ -310,28 +310,57 @@ class ChatService:
                     if not last_judgment or (now - last_judgment).total_seconds() >= cooldown:
                         target_id, resolved_name = await cls.resolve_user(chat_id, target_user_str, context_msgs)
                         if target_id and target_id != bot_user.id:
-                            event_id = f"spontaneous:{chat_id}:{target_id}:{message.message_id}"
-                            event = PointEvent(
-                                event_id=event_id,
-                                chat_id=str(chat_id),
-                                user_id=str(target_id),
-                                points_delta=points_delta,
-                                event_type="spontaneous_verdict",
-                                reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
-                                season_id="global"
-                            )
-                            await db.user_repository.apply_point_event_transactional(chat_id, event)
-                            cls._last_spontaneous_judgment_time[chat_id] = now
+                            # Locate the offending/target message in context
+                            target_msg = None
+                            for m in reversed(context_msgs or []):
+                                if str(m.get('user_id')) == str(target_id):
+                                    target_msg = m
+                                    break
 
-                            tag_display = f"@{resolved_name}" if not str(resolved_name).startswith('@') else resolved_name
-                            clean_reason = escape(verdict_reason or ("Масть" if points_delta > 0 else "Людское"))
+                            target_msg_id = (target_msg.get('message_id') if target_msg else None) or getattr(message, 'message_id', None)
 
-                            if points_delta > 0:
-                                banner = f"\n\n⚖️ <b>Вердикт Смотрящего: +{points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
-                            else:
-                                banner = f"\n\n👑 <b>Людской поступок: {points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+                            # Deduplication check: was this specific message already reported or scored?
+                            already_scored = False
+                            if target_msg_id:
+                                existing = await db.message_repository.get_message(chat_id, target_msg_id)
+                                if existing and (existing.get("points_awarded", 0) > 0 or existing.get("is_reported")):
+                                    already_scored = True
 
-                            return comment_body + banner
+                            if not already_scored:
+                                event_id = f"spontaneous:{chat_id}:{target_id}:{target_msg_id}"
+                                event = PointEvent(
+                                    event_id=event_id,
+                                    chat_id=str(chat_id),
+                                    user_id=str(target_id),
+                                    points_delta=points_delta,
+                                    event_type="spontaneous_verdict",
+                                    reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
+                                    season_id="global"
+                                )
+                                apply_res = await db.user_repository.apply_point_event_transactional(chat_id, event)
+                                if apply_res.get("applied") and not apply_res.get("already_processed"):
+                                    cls._last_spontaneous_judgment_time[chat_id] = now
+
+                                    # Flag the message in DB so /report and daily analysis will NOT double-charge!
+                                    if target_msg_id:
+                                        await db.message_repository.mark_message_reported(
+                                            chat_id=chat_id,
+                                            msg_id=target_msg_id,
+                                            reporter_id=bot_user.id,
+                                            reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
+                                            points_awarded=points_delta,
+                                            ai_thought_process=f"Spontaneous verdict in chat: {comment_body}"
+                                        )
+
+                                    tag_display = f"@{resolved_name}" if not str(resolved_name).startswith('@') else resolved_name
+                                    clean_reason = escape(verdict_reason or ("Масть" if points_delta > 0 else "Людское"))
+
+                                    if points_delta > 0:
+                                        banner = f"\n\n⚖️ <b>Вердикт Смотрящего: +{points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+                                    else:
+                                        banner = f"\n\n👑 <b>Людской поступок: {points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+
+                                    return comment_body + banner
 
                 return comment_body
         except Exception as e:

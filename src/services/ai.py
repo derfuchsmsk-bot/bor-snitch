@@ -216,10 +216,11 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
                 reply_context = f" [Reply to MsgID: {reply_id}]"
         
         report_tag = ""
-        if log.get('is_reported'):
+        points_awarded = log.get('points_awarded', 0)
+        is_reported = log.get('is_reported', False)
+        if is_reported or points_awarded > 0:
             reason = log.get('report_reason', 'No reason')
-            points_awarded = log.get('points_awarded', 0)
-            report_tag = f" [REPORTED BY USER: {reason}]"
+            report_tag = f" [VERDICT/REPORT: {reason}]"
             if points_awarded > 0:
                 report_tag += f" [POINTS ALREADY AWARDED ({points_awarded}) - DO NOT SCORE]"
         
