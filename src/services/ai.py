@@ -576,10 +576,11 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         
     mood = MoodService.get_current_mood()
     
-        now_msk = datetime.now(moscow_tz)
-        current_time_str = now_msk.strftime("%Y-%m-%d %H:%M:%S (МСК)")
+    moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+    now_msk = datetime.now(moscow_tz)
+    current_time_str = now_msk.strftime("%Y-%m-%d %H:%M:%S (МСК)")
 
-        prompt = f"""
+    prompt = f"""
 ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ СЕЙЧАС: {current_time_str}
 
 КОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:
