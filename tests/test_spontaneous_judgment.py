@@ -259,6 +259,55 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply, "Здорово, коль не шутишь.")
         mock_db.user_repository.apply_point_event_transactional.assert_not_called()
 
+    @patch("src.services.chat_service.debt_repository.update_debts", new_callable=AsyncMock)
+    @patch("src.services.chat_service.db")
+    @patch("src.services.chat_service.ai")
+    async def test_process_cynical_comment_records_debts(self, mock_ai, mock_db, mock_update_debts):
+        from src.models.ai import DebtTransaction
+        mock_msg = MagicMock()
+        mock_msg.chat.id = -100123
+        mock_msg.from_user.id = 555
+        mock_msg.from_user.username = "elisei"
+        mock_msg.message_id = 44
+        mock_msg.date = datetime.now(timezone.utc)
+        mock_msg.text = "@snitch_sayonara_bot я скинул за Паштета 500 за такси"
+        mock_msg.reply_to_message = None
+
+        mock_bot = MagicMock()
+        mock_bot.id = 999
+        mock_bot.username = "snitch_sayonara_bot"
+        mock_msg.bot.get_me = AsyncMock(return_value=mock_bot)
+
+        mock_db.get_user_stats = AsyncMock(return_value={"total_points": 10})
+        mock_db.get_recent_messages = AsyncMock(return_value=[])
+
+        mock_ai.generate_cynical_comment = AsyncMock(return_value=CynicalCommentResult(
+            comment="Опять спонсируешь бродягу.",
+            award_points=False,
+            debt_transactions=[
+                DebtTransaction(
+                    debtor="паштет",
+                    creditor="elisei",
+                    amount=500,
+                    reason="такси",
+                    is_settled=False
+                )
+            ]
+        ))
+
+        reply = await ChatService.process_cynical_comment(mock_msg, mock_msg.text)
+
+        self.assertIn("Опять спонсируешь бродягу.", reply)
+        self.assertIn("Кстати, я зафиксировал долги:", reply)
+        self.assertIn("Паштет торчит 500 Elisei (такси)", reply)
+        mock_update_debts.assert_called_once()
+        call_txs = mock_update_debts.call_args[0][1]
+        self.assertEqual(len(call_txs), 1)
+        self.assertEqual(call_txs[0]["debtor"], "паштет")
+        self.assertEqual(call_txs[0]["creditor"], "elisei")
+        self.assertEqual(call_txs[0]["amount"], 500)
+        self.assertFalse(call_txs[0]["is_settled"])
+
 
 if __name__ == "__main__":
     unittest.main()

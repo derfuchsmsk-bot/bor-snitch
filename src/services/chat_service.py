@@ -325,18 +325,28 @@ class ChatService:
                 # Debt tracking via spontaneous AI parsing
                 if getattr(config, "ENABLE_DEBTS", True) and isinstance(result, CynicalCommentResult) and result.debt_transactions:
                     dt_dicts = [dt.model_dump() for dt in result.debt_transactions]
+                    for dt in dt_dicts:
+                        _, r_debtor = await cls.resolve_user(chat_id, dt.get('debtor', ''), context_msgs)
+                        if r_debtor:
+                            dt['debtor'] = r_debtor.lstrip('@')
+                        _, r_creditor = await cls.resolve_user(chat_id, dt.get('creditor', ''), context_msgs)
+                        if r_creditor:
+                            dt['creditor'] = r_creditor.lstrip('@')
+
                     await debt_repository.update_debts(chat_id, dt_dicts)
                     
-                    debt_text = "\n💸 <b>Кстати, я зафиксировал долги:</b>\n"
+                    debt_text = "\n\n💸 <b>Кстати, я зафиксировал долги:</b>\n"
                     for dt in dt_dicts:
                         debtor = dt.get('debtor', 'Кто-то')
                         creditor = dt.get('creditor', 'Кому-то')
                         amount = dt.get('amount', 0)
                         is_settled = dt.get('is_settled', False)
+                        reason = dt.get('reason', '')
+                        reason_str = f" ({escape(reason)})" if reason else ""
                         if is_settled:
-                            debt_text += f"✅ {escape(debtor)} вернул {amount} {escape(creditor)}\n"
+                            debt_text += f"✅ {escape(debtor.capitalize())} вернул {amount} {escape(creditor.capitalize())}{reason_str}\n"
                         else:
-                            debt_text += f"📉 {escape(debtor)} торчит {amount} {escape(creditor)}\n"
+                            debt_text += f"📉 {escape(debtor.capitalize())} торчит {amount} {escape(creditor.capitalize())}{reason_str}\n"
                     
                     comment_body += debt_text
 

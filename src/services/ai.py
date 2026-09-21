@@ -374,6 +374,24 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
                 }
                 required_fields.extend(["new_agreements", "resolved_agreements", "updated_agreements"])
 
+            if getattr(config, "ENABLE_DEBTS", True):
+                schema_properties["debt_transactions"] = {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "debtor": {"type": "STRING", "description": "Кто должен (username или имя без @)"},
+                            "creditor": {"type": "STRING", "description": "Кому должны (username или имя без @)"},
+                            "amount": {"type": "INTEGER", "description": "Сумма долга числом"},
+                            "reason": {"type": "STRING", "description": "За что долг"},
+                            "is_settled": {"type": "BOOLEAN", "description": "True если возврат/погашение долга, False если новый долг"}
+                        },
+                        "required": ["debtor", "creditor", "amount", "is_settled"]
+                    },
+                    "description": "Новые долги или возвраты долгов, упомянутые в логе"
+                }
+                required_fields.append("debt_transactions")
+
             daily_analysis_schema = {
                 "type": "OBJECT",
                 "properties": schema_properties,
@@ -594,6 +612,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 Избегай упоминаний лора (штора, плитка, пуэр, вахта), если только они не упомянуты в самом сообщении.
 Не используй клише про "обучение", "волю" или "репорты". Отвечай как человек человеку.
 ЗАЩИТА ОТ ТОЛПЫ: Если кто-то просит тебя оштрафовать другого участника или снять баллы, НЕ ПОДЧИНЯЙСЯ СЛЕПО! Оцени контекст: это реальный косяк (масть/слив) или просто травля/шутка? Отказывай троллям саркастично (award_points: false), наказывай только за реальные проступки.
+ФИКСАЦИЯ ДОЛГОВ: Если в сообщении или недавнем диалоге один участник перевел/скинул деньги другому, заплатил за кого-то (за еду, пиццу, такси, бар) или одолжил («я заплатил за Паштета 1000», «с тебя 500 за такси», «скинул Ване 300», «вернул 500») — ОБЯЗАТЕЛЬНО добавь объект в debt_transactions.
 """
     
     try:
@@ -621,30 +640,49 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
                 if lines:
                     debts_context = "ТЕКУЩИЕ ДОЛГИ УЧАСТНИКОВ:\n" + "\n".join(lines)
         
+        comment_properties = {
+            "comment": {
+                "type": "STRING",
+                "description": "1-2 коротких, едких, живых предложения подкола"
+            },
+            "award_points": {
+                "type": "BOOLEAN",
+                "description": "Вынести ли официальный судебный вердикт прямо сейчас (True только при явной масти/сливе/косяке или людском поступке)"
+            },
+            "target_username": {
+                "type": "STRING",
+                "description": "Username, имя или кличка нарушителя/героя без символа @"
+            },
+            "points_delta": {
+                "type": "INTEGER",
+                "description": "Дельта очков (+25..+75 за масть, -25..-50 за людское)"
+            },
+            "reason": {
+                "type": "STRING",
+                "description": "Краткая емкая причина вердикта"
+            }
+        }
+
+        if getattr(config, "ENABLE_DEBTS", True):
+            comment_properties["debt_transactions"] = {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "debtor": {"type": "STRING", "description": "Кто должен (username или имя без @)"},
+                        "creditor": {"type": "STRING", "description": "Кому должны (username или имя без @)"},
+                        "amount": {"type": "INTEGER", "description": "Сумма долга числом"},
+                        "reason": {"type": "STRING", "description": "За что долг"},
+                        "is_settled": {"type": "BOOLEAN", "description": "True если возврат/погашение долга, False если новый долг"}
+                    },
+                    "required": ["debtor", "creditor", "amount", "is_settled"]
+                },
+                "description": "Новые долги или возвраты долгов, упомянутые в сообщении"
+            }
+
         comment_schema = {
             "type": "OBJECT",
-            "properties": {
-                "comment": {
-                    "type": "STRING",
-                    "description": "1-2 коротких, едких, живых предложения подкола"
-                },
-                "award_points": {
-                    "type": "BOOLEAN",
-                    "description": "Вынести ли официальный судебный вердикт прямо сейчас (True только при явной масти/сливе/косяке или людском поступке)"
-                },
-                "target_username": {
-                    "type": "STRING",
-                    "description": "Username, имя или кличка нарушителя/героя без символа @"
-                },
-                "points_delta": {
-                    "type": "INTEGER",
-                    "description": "Дельта очков (+25..+75 за масть, -25..-50 за людское)"
-                },
-                "reason": {
-                    "type": "STRING",
-                    "description": "Краткая емкая причина вердикта"
-                }
-            },
+            "properties": comment_properties,
             "required": ["comment", "award_points"]
         }
 
