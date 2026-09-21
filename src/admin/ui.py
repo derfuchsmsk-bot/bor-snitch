@@ -1404,11 +1404,11 @@ def get_admin_html() -> str:
       <div class="space-y-3 text-xs">
         <div>
           <label class="block font-medium text-slate-300 mb-1">
-            Причина отмены (В чём бот ошибся?) <span class="text-rose-400">*</span>
+            Причина отмены (необязательно)
           </label>
-          <textarea id="modal-annul-input-reason" rows="3" required
+          <textarea id="modal-annul-input-reason" rows="2"
                     class="w-full p-3 bg-[#1a2333] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 font-sans text-xs"
-                    placeholder="Например: Это была дружеская ирония, а не токсичность. Или: Участник предупреждал за 2 часа до встречи."></textarea>
+                    placeholder="Опишите, в чём бот ошибся (например: дружеская ирония, участник предупреждал). Если оставить пустым — запишется стандартная отмена."></textarea>
         </div>
 
         <div class="bg-[#162032]/60 border border-purple-500/30 rounded-xl p-3 space-y-2">
@@ -1418,13 +1418,13 @@ def get_admin_html() -> str:
             <span class="font-semibold text-purple-300 text-xs">🎓 Обучить бота на этой ошибке (создать правило)</span>
           </label>
           <p class="text-[11px] text-slate-400 leading-normal pl-6">
-            ИИ проанализирует ошибку и сформирует строгое правило поведения, которое сразу запишется в систему обучения (<a href="#" onclick="closeModal('modal-annul-verdict'); switchTab('lessons'); return false;" class="text-purple-400 hover:underline">Уроки</a>) и предотвратит повторение ошибки.
+            ИИ сформирует строгое правило поведения на будущее, чтобы бот больше не наказывал за подобные действия.
           </p>
 
           <div id="modal-annul-custom-rule-wrap" class="pt-1 pl-6">
-            <label class="block text-[11px] font-medium text-slate-400 mb-1">Своя формулировка правила (необязательно, если пусто — сгенерирует ИИ):</label>
+            <label class="block text-[11px] font-medium text-slate-400 mb-1">Своя формулировка правила (необязательно):</label>
             <input type="text" id="modal-annul-custom-rule"
-                   placeholder="Например: Не считать токсичностью подколы про Доту..."
+                   placeholder="Оставьте пустым для автогенерации ИИ или введите своё..."
                    class="w-full px-3 py-2 bg-[#0f172a] border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500">
           </div>
         </div>
@@ -2593,13 +2593,13 @@ def get_admin_html() -> str:
 
     async function submitAnnulVerdict() {
       const eventId = document.getElementById('modal-annul-event-id').value;
-      const reason = document.getElementById('modal-annul-input-reason').value.trim();
-      if (!reason) {
-        showToast('Укажите причину аннулирования решения', 'error');
-        return;
-      }
+      let reason = document.getElementById('modal-annul-input-reason').value.trim();
       const learn = document.getElementById('modal-annul-learn-checkbox').checked;
       const customRule = document.getElementById('modal-annul-custom-rule').value.trim();
+
+      if (!reason) {
+        reason = customRule || 'Ошибочное решение (отменено администратором)';
+      }
 
       const btn = document.getElementById('modal-annul-submit-btn');
       const oldHtml = btn.innerHTML;

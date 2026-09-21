@@ -137,6 +137,11 @@ class LearningService:
         rule_text = (custom_rule or "").strip()
         reasoning = f"Аннулирование вердикта администратором: {annul_reason}"
 
+        vague_rules = {"неправильное решение", "ошибка", "неправильно", "отмена", "не то", "бред", "отменить", "нет"}
+        if rule_text.lower() in vague_rules:
+            annul_reason = f"{annul_reason} ({rule_text})"
+            rule_text = ""
+
         if not rule_text:
             prompt = f"""
 Ты — система самообучения Снитч-Бота. Администратор только что отменил (аннулировал) ошибочное решение/начисление очков бота в чате.
