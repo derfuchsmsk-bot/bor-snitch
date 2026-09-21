@@ -132,6 +132,51 @@ class TestPointsLedgerAndAmnesty(unittest.IsolatedAsyncioTestCase):
         daily_ref.set.assert_called_once_with(old_analysis)
         mock_db.transaction.assert_not_called()
 
+    @patch("src.repositories.user_repository.db")
+    async def test_annul_point_event(self, mock_db):
+        repo = UserRepository()
+        repo.db = mock_db
+
+        mock_transaction = MagicMock()
+        mock_transaction._begin = AsyncMock()
+        mock_transaction._rollback = AsyncMock()
+        mock_transaction._commit = AsyncMock()
+        mock_transaction._clean_up = MagicMock()
+        mock_transaction._max_attempts = 1
+        mock_db.transaction.return_value = mock_transaction
+
+        # Mock ledger doc
+        mock_ledger_doc = MagicMock()
+        mock_ledger_doc.exists = True
+        mock_ledger_doc.to_dict.return_value = {
+            "user_id": "100",
+            "points_delta": 50,
+            "event_type": "report",
+            "reason": "Toxicity: мат",
+            "status": "active"
+        }
+        mock_ledger_ref = MagicMock()
+        mock_ledger_ref.get = AsyncMock(return_value=mock_ledger_doc)
+
+        # Mock user doc
+        mock_user_doc = MagicMock()
+        mock_user_doc.exists = True
+        mock_user_doc.to_dict.return_value = {"total_points": 150, "username": "test_user"}
+        mock_user_ref = MagicMock()
+        mock_user_ref.get = AsyncMock(return_value=mock_user_doc)
+
+        repo._get_points_ledger_ref = MagicMock(return_value=mock_ledger_ref)
+        repo._get_user_ref = MagicMock(return_value=mock_user_ref)
+
+        res = await repo.annul_point_event(-1001, "report:-1001:10:20", reason="Не было мата")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["reverted_delta"], 50)
+        self.assertEqual(res["new_total"], 100) # 150 - 50 = 100
+        mock_transaction.update.assert_any_call(mock_user_ref, {
+            "total_points": 100,
+            "current_rank": "Шнырь 🧹"
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -150,7 +150,8 @@ class PromptService:
         current_context: str = "",
         mood_instruction: str = "",
         social_context: str = "",
-        debts_context: str = ""
+        debts_context: str = "",
+        lessons: list = None
     ) -> str:
         template = cls.get_template("cynical_comment_prompt")
         mood_block = f"\n<mood>\n{mood_instruction}\n</mood>\n" if mood_instruction else ""
@@ -168,7 +169,7 @@ class PromptService:
             '''
         
         try:
-            return SafeTemplate(template).safe_substitute(
+            res = SafeTemplate(template).safe_substitute(
                 lore_json=lore_json,
                 verified_facts=verified_facts,
                 current_context=current_context,
@@ -177,13 +178,22 @@ class PromptService:
                 debts_context=debts_block
             )
         except Exception:
-            return template
+            res = template
+
+        if lessons:
+            clean_lessons = [str(l).strip() for l in lessons if l and str(l).strip()]
+            if clean_lessons:
+                lessons_str = "\n<learned_lessons>\n" + "\n".join(f"{i}. {l}" for i, l in enumerate(clean_lessons, 1)) + "\n</learned_lessons>\n"
+                res += f"\n{lessons_str}"
+
+        return res
 
     @classmethod
     def format_report_validation_prompt(
         cls,
         lore_json: str = "{}",
-        active_agreements: str = ""
+        active_agreements: str = "",
+        lessons: list = None
     ) -> str:
         from string import Template
         class SafeTemplate(Template):
@@ -210,6 +220,13 @@ class PromptService:
             res += f"\n\n<lore_core>\n{lore_json}\n</lore_core>"
         if "<active_agreements>" not in res and active_agreements:
             res += f"\n\n<active_agreements>\n{active_agreements}\n</active_agreements>"
+
+        if lessons:
+            clean_lessons = [str(l).strip() for l in lessons if l and str(l).strip()]
+            if clean_lessons:
+                lessons_str = "\n<learned_lessons>\n" + "\n".join(f"{i}. {l}" for i, l in enumerate(clean_lessons, 1)) + "\n</learned_lessons>\n"
+                res += f"\n{lessons_str}"
+
         return res
 
     @classmethod

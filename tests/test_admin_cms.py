@@ -367,5 +367,93 @@ def test_admin_ui_contains_chat_tab():
     assert "tab-content-chat" in resp.text
     assert "loadChatMessages" in resp.text
     assert "sendChatMessageFromAdmin" in resp.text
+
+
+def test_get_points_ledger_and_annul_verdict():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    chat_id = settings.MAIN_CHAT_ID
+
+    # 1. Test GET points ledger
+    with patch("src.admin.router.user_repository.get_points_ledger", new_callable=AsyncMock) as mock_get_ledger:
+        mock_get_ledger.return_value = [
+            {
+                "id": "report:-1001:42:555",
+                "user_id": "123",
+                "username": "arsinov",
+                "full_name": "Паштет",
+                "points_delta": 50,
+                "event_type": "report",
+                "reason": "Toxicity: Оскорбления",
+                "status": "active",
+                "is_annulled": False,
+                "created_at": "2026-09-21T12:00:00Z"
+            }
+        ]
+        resp = client.get(f"/api/admin/chats/{chat_id}/points_ledger", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["events"]) == 1
+        assert data["events"][0]["username"] == "arsinov"
+        assert data["events"][0]["points_delta"] == 50
+
+    # 2. Test POST annul verdict with self-learning
+    with patch("src.admin.router.user_repository.annul_point_event", new_callable=AsyncMock) as mock_annul, \
+         patch("src.admin.router.LearningService.create_lesson_from_annulment", new_callable=AsyncMock) as mock_learn:
+
+        mock_annul.return_value = {
+            "success": True,
+            "reverted_delta": 50,
+            "new_total": 0,
+            "rank": "Бродяга",
+            "user_id": "123",
+            "username": "arsinov",
+            "event": {
+                "id": "report:-1001:42:555",
+                "event_type": "report",
+                "reason": "Toxicity: Оскорбления",
+                "points_delta": 50,
+                "username": "arsinov"
+            }
+        }
+        mock_learn.return_value = {
+            "id": "lesson_123",
+            "learned_rule": "Не считать дружеский сарказм токсичностью",
+            "verdict": "mistake",
+            "status": "active"
+        }
+
+        resp = client.post(
+            f"/api/admin/chats/{chat_id}/points_ledger/report:-1001:42:555/annul",
+            json={
+                "reason": "Это дружеская ирония, а не токсичность",
+                "learn_lesson": True,
+                "custom_rule": "Не считать дружеский сарказм токсичностью"
+            },
+            headers=headers
+        )
+        assert resp.status_code == 200
+        res_data = resp.json()
+        assert res_data["status"] == "annulled"
+        assert res_data["reverted_delta"] == 50
+        assert res_data["new_total"] == 0
+        assert res_data["lesson"]["learned_rule"] == "Не считать дружеский сарказм токсичностью"
+
+        mock_annul.assert_called_once_with(
+            int(chat_id),
+            "report:-1001:42:555",
+            reason="Это дружеская ирония, а не токсичность"
+        )
+        mock_learn.assert_called_once()
+
+
+def test_admin_ui_contains_verdicts_tab():
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "tab-content-verdicts" in resp.text
+    assert "loadVerdicts" in resp.text
+    assert "modal-annul-verdict" in resp.text
+    assert "submitAnnulVerdict" in resp.text
+
     assert "chat-reply-banner" in resp.text
 

@@ -121,3 +121,83 @@ class LearningService:
         Fetches active lessons (rule strings), newest first, to inject into the prompt.
         """
         return await lesson_repository.get_active_rules(chat_id, limit=limit)
+
+    @staticmethod
+    async def create_lesson_from_annulment(
+        chat_id: int | str,
+        event_data: dict,
+        annul_reason: str,
+        custom_rule: Optional[str] = None
+    ) -> Optional[dict]:
+        """
+        Synthesizes a behavioral rule and records a new active lesson when an admin annuls a verdict.
+        If custom_rule is provided, uses it directly; otherwise invokes Gemini to extract a rule.
+        """
+        chat_id_int = int(chat_id)
+        rule_text = (custom_rule or "").strip()
+        reasoning = f"Аннулирование вердикта администратором: {annul_reason}"
+
+        if not rule_text:
+            prompt = f"""
+Ты — система самообучения Снитч-Бота. Администратор только что отменил (аннулировал) ошибочное решение/начисление очков бота в чате.
+
+ДАННЫЕ ОШИБОЧНОГО ВЕРДИКТА:
+- Тип события: {event_data.get('event_type')}
+- За что были начислены/сняты очки: "{event_data.get('reason')}"
+- Дельта очков: {event_data.get('points_delta')}
+- Участник: {event_data.get('username') or event_data.get('user_id')}
+
+ОБОСНОВАНИЕ ОТМЕНЫ АДМИНИСТРАТОРОМ (В чём ошибся бот):
+"{annul_reason}"
+
+ИНСТРУКЦИЯ:
+Сформулируй ОДНО краткое, ёмкое и чёткое правило поведения для бота (1-2 предложения), чтобы бот больше НИКОГДА не совершал подобной ошибки.
+Примеры хороших правил:
+- "Не считать токсичностью дружеские подколы про игры и стримы между кентами."
+- "Не штрафовать за отмену встречи, если участник предупредил заранее или была уважительная причина."
+- "Не считать мастью отказ от участия в пакте, если человек изначально не давал явного согласия."
+- "Учитывать контекст сарказма и цитирования мемов при оценке токсичности."
+"""
+            try:
+                model = GenerativeModel(config.AI_MODEL_ANALYSIS)
+                schema = {
+                    "type": "OBJECT",
+                    "properties": {
+                        "learned_rule": {"type": "STRING", "description": "Сформулированное правило поведения на русском языке"},
+                        "reasoning": {"type": "STRING", "description": "Краткое пояснение ошибки"}
+                    },
+                    "required": ["learned_rule"]
+                }
+                response = await model.generate_content_async(
+                    contents=[prompt],
+                    generation_config={
+                        "response_mime_type": "application/json",
+                        "response_schema": schema
+                    },
+                    safety_settings=FEEDBACK_SAFETY_SETTINGS
+                )
+                res_data = json.loads(response.text)
+                rule_text = (res_data.get("learned_rule") or "").strip()
+                if res_data.get("reasoning"):
+                    reasoning = res_data["reasoning"].strip()
+            except Exception as e:
+                logger.warning(f"Could not synthesize annulment rule via Gemini: {e}")
+                rule_text = f"Не штрафовать за подобные действия: {annul_reason}"
+
+        if not rule_text:
+            rule_text = f"Не штрафовать за подобные действия: {annul_reason}"
+
+        moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+        date_key = datetime.now(moscow_tz).strftime("%Y-%m-%d")
+
+        lesson = await lesson_repository.create_lesson(chat_id_int, {
+            "created_at": datetime.now(timezone.utc),
+            "date_key": date_key,
+            "trigger_context": f"Отмена вердикта {event_data.get('id', event_data.get('event_id'))}. Исходная причина: {event_data.get('reason')}. Причина отмены: {annul_reason}",
+            "learned_rule": rule_text,
+            "verdict": "mistake",
+            "reasoning": reasoning,
+            "status": "active"
+        })
+        logger.info(f"Recorded new lesson from annulment for chat {chat_id}: {rule_text}")
+        return lesson

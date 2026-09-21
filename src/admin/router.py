@@ -111,6 +111,11 @@ class PointsAdjustRequest(BaseModel):
     exact_points: Optional[int] = None
     reason: Optional[str] = "Изменение через панель администратора"
 
+class AnnulVerdictRequest(BaseModel):
+    reason: Optional[str] = "Аннулировано через панель администратора"
+    learn_lesson: Optional[bool] = True
+    custom_rule: Optional[str] = None
+
 class AchievementsUpdateRequest(BaseModel):
     achievements: List[Any]
 
@@ -496,29 +501,90 @@ async def send_chat_message(chat_id: str, body: ChatSendMessageRequest, admin=De
 
 
 @router.get("/api/admin/chats/{chat_id}/points_ledger")
-async def get_points_ledger(chat_id: str, limit: int = 50, admin=Depends(get_current_admin)):
+async def get_points_ledger(
+    chat_id: str,
+    limit: int = 100,
+    event_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    admin=Depends(get_current_admin)
+):
     """Returns recent point events for audit and rollback."""
     try:
         c_id = int(chat_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid chat_id format")
 
-    events = await user_repository.get_points_ledger(c_id, limit=limit)
+    events = await user_repository.get_points_ledger(
+        c_id,
+        limit=min(limit, 300),
+        event_type=event_type,
+        user_id=user_id
+    )
     return {
         "chat_id": chat_id,
         "events": events
     }
 
 
-@router.delete("/api/admin/chats/{chat_id}/points_ledger/{event_id}")
-async def revert_points_event(chat_id: str, event_id: str, admin=Depends(get_current_admin)):
-    """Reverts and deletes an accidental or erroneous point transaction."""
+@router.post("/api/admin/chats/{chat_id}/points_ledger/{event_id}/annul")
+async def annul_points_verdict(
+    chat_id: str,
+    event_id: str,
+    body: AnnulVerdictRequest = AnnulVerdictRequest(),
+    admin=Depends(get_current_admin)
+):
+    """
+    Annuls a bot verdict / point transaction:
+    - Reverses the points on user_stats.
+    - Marks the event as annulled in points_ledger.
+    - Optionally creates a new active lesson so the bot learns from the mistake.
+    """
     try:
         c_id = int(chat_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid chat_id format")
 
-    res = await user_repository.revert_point_event(c_id, event_id)
+    res = await user_repository.annul_point_event(
+        c_id,
+        event_id,
+        reason=body.reason or "Аннулировано через панель администратора"
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to annul event"))
+
+    lesson = None
+    if body.learn_lesson:
+        try:
+            lesson = await LearningService.create_lesson_from_annulment(
+                chat_id=c_id,
+                event_data=res.get("event") or {},
+                annul_reason=body.reason or "Решение признано ошибочным администратором",
+                custom_rule=body.custom_rule
+            )
+        except Exception as e:
+            logger.error(f"Failed to create lesson from annulment: {e}", exc_info=True)
+
+    return {
+        "status": "annulled",
+        "event_id": event_id,
+        "reverted_delta": res.get("reverted_delta"),
+        "new_total": res.get("new_total"),
+        "rank": res.get("rank"),
+        "user_id": res.get("user_id"),
+        "username": res.get("username"),
+        "lesson": lesson
+    }
+
+
+@router.delete("/api/admin/chats/{chat_id}/points_ledger/{event_id}")
+async def revert_points_event(chat_id: str, event_id: str, admin=Depends(get_current_admin)):
+    """Reverts and annuls an accidental or erroneous point transaction."""
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    res = await user_repository.annul_point_event(c_id, event_id, reason="Удалено через админ-панель")
     if not res.get("success"):
         raise HTTPException(status_code=404, detail=res.get("error", "Event not found"))
     return res

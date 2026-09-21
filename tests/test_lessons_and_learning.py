@@ -332,3 +332,36 @@ def test_admin_ui_contains_lessons_elements():
 
     # XSS escape check on lessons
     assert "escapeHtml(lesson.learned_rule" in html
+
+
+@pytest.mark.anyio
+async def test_create_lesson_from_annulment():
+    event_data = {
+        "id": "report:-1001:99:555",
+        "event_type": "report",
+        "reason": "Toxicity: Оскорбления",
+        "points_delta": 50,
+        "username": "arsinov"
+    }
+    annul_reason = "Это была дружеская шутка"
+
+    # Test with custom rule provided
+    with patch("src.repositories.lesson_repository.lesson_repository.create_lesson", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = {
+            "id": "lesson_999",
+            "learned_rule": "Не наказывать за дружеские подколы",
+            "status": "active"
+        }
+        res = await LearningService.create_lesson_from_annulment(
+            chat_id=-1001,
+            event_data=event_data,
+            annul_reason=annul_reason,
+            custom_rule="Не наказывать за дружеские подколы"
+        )
+        assert res["id"] == "lesson_999"
+        mock_create.assert_called_once()
+        saved_dict = mock_create.call_args[0][1]
+        assert saved_dict["learned_rule"] == "Не наказывать за дружеские подколы"
+        assert saved_dict["verdict"] == "mistake"
+        assert saved_dict["status"] == "active"
+

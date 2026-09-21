@@ -155,6 +155,10 @@ def get_admin_html() -> str:
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             👥 Участники и Очки
           </button>
+          <button onclick="switchTab('verdicts')" data-tab="verdicts"
+                  class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60 flex items-center gap-1.5">
+            <span>⚖️</span> <span>Вердикты</span>
+          </button>
           <button onclick="switchTab('lore')" data-tab="lore"
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             📜 Лор и Факты
@@ -561,9 +565,9 @@ def get_admin_html() -> str:
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
               <span>Обновить</span>
             </button>
-            <button onclick="showLedgerModal()"
+            <button onclick="switchTab('verdicts')"
                     class="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition flex items-center gap-1.5">
-              <span>📋 Аудит очков (Ledger)</span>
+              <span>⚖️ Все вердикты и отмена</span>
             </button>
           </div>
         </div>
@@ -591,6 +595,107 @@ def get_admin_html() -> str:
               <tbody id="users-table-body" class="divide-y divide-slate-800/60 text-slate-300">
                 <tr>
                   <td colspan="5" class="py-8 text-center text-slate-500">Загрузка участников...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: VERDICTS & POINTS AUDIT ================= -->
+      <section id="tab-content-verdicts" class="tab-pane hidden space-y-6">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111827] p-5 rounded-2xl border border-slate-800 shadow-xl">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>⚖️</span> Решения и начисления очков Снитч-Бота
+            </h2>
+            <p class="text-xs text-slate-400">Полный аудит всех вердиктов (доносы, спонтанные штрафы, итоги дня) с возможностью аннулирования и самообучения бота</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="loadVerdicts()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>Обновить</span>
+            </button>
+            <button onclick="switchTab('lessons')"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition flex items-center gap-1.5">
+              <span>🎓 Уроки бота</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-slate-400 text-xs font-medium">Всего начислений</div>
+            <div id="verdicts-stat-total" class="text-2xl font-bold font-mono text-white mt-1">0</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">В текущем чате</div>
+          </div>
+          <div class="bg-[#111827] border border-rose-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-rose-400 text-xs font-medium">Штрафы (Масть)</div>
+            <div id="verdicts-stat-penalties" class="text-2xl font-bold font-mono text-rose-400 mt-1">0</div>
+            <div id="verdicts-stat-penalties-pts" class="text-[10px] text-slate-400 mt-0.5">+0 pts начислено</div>
+          </div>
+          <div class="bg-[#111827] border border-emerald-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-emerald-400 text-xs font-medium">Людское / Списания</div>
+            <div id="verdicts-stat-rewards" class="text-2xl font-bold font-mono text-emerald-400 mt-1">0</div>
+            <div id="verdicts-stat-rewards-pts" class="text-[10px] text-slate-400 mt-0.5">-0 pts списано</div>
+          </div>
+          <div class="bg-[#111827] border border-amber-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-amber-400 text-xs font-medium">Аннулировано решений</div>
+            <div id="verdicts-stat-annulled" class="text-2xl font-bold font-mono text-amber-400 mt-1">0</div>
+            <div id="verdicts-stat-annulled-pts" class="text-[10px] text-slate-400 mt-0.5">Баланс возвращён</div>
+          </div>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="flex-1">
+            <input type="text" id="verdicts-search-input" oninput="filterVerdictsTable()"
+                   placeholder="🔍 Поиск по нику, ID, причине или цитате..."
+                   class="w-full px-4 py-2.5 bg-[#111827] border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+          </div>
+          <div class="flex gap-2">
+            <select id="verdicts-type-filter" onchange="filterVerdictsTable()"
+                    class="px-3 py-2 bg-[#111827] border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
+              <option value="all">Все типы решений</option>
+              <option value="report">🎯 Доносы (/report)</option>
+              <option value="spontaneous_verdict">⚖️ Спонтанные вердикты</option>
+              <option value="daily_analysis">📅 Судья дня</option>
+              <option value="gamble">🎰 Казино</option>
+              <option value="false_report">⚠️ Ложные доносы</option>
+              <option value="afk">💤 АФК штрафы</option>
+              <option value="admin_adjustment">🛠 Админ-корректировки</option>
+              <option value="weekly_amnesty">👑 Амнистия</option>
+            </select>
+            <select id="verdicts-status-filter" onchange="filterVerdictsTable()"
+                    class="px-3 py-2 bg-[#111827] border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
+              <option value="all">Все статусы</option>
+              <option value="active">Только активные</option>
+              <option value="annulled">Только аннулированные</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Verdicts Table -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-[#162032] text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-3 px-4">Время</th>
+                  <th class="py-3 px-4">Участник</th>
+                  <th class="py-3 px-4 text-center">Тип</th>
+                  <th class="py-3 px-4 text-center">Баллы</th>
+                  <th class="py-3 px-4">Причина & Основание</th>
+                  <th class="py-3 px-4 text-center">Статус</th>
+                  <th class="py-3 px-4 text-right">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="verdicts-table-body" class="divide-y divide-slate-800/60 text-slate-300">
+                <tr>
+                  <td colspan="7" class="py-8 text-center text-slate-500">Загрузка решений...</td>
                 </tr>
               </tbody>
             </table>
@@ -1184,6 +1289,74 @@ def get_admin_html() -> str:
     </div>
   </div>
 
+  <!-- MODAL: Annul Verdict with Self-Learning -->
+  <div id="modal-annul-verdict" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>⚖️</span> <span>Аннулировать решение бота</span>
+        </h3>
+        <button onclick="closeModal('modal-annul-verdict')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <!-- Verdict Brief Info Card -->
+      <div class="bg-[#162032] border border-slate-700/60 rounded-xl p-3 text-xs space-y-1.5">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Участник:</span>
+          <span id="modal-annul-user" class="font-bold font-mono text-emerald-400"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Начисление:</span>
+          <span id="modal-annul-delta" class="font-bold font-mono"></span>
+        </div>
+        <div>
+          <span class="text-slate-400">Исходная причина вердикта:</span>
+          <div id="modal-annul-reason" class="text-slate-200 mt-0.5 italic bg-[#0f172a] p-2 rounded-lg border border-slate-800"></div>
+        </div>
+      </div>
+
+      <input type="hidden" id="modal-annul-event-id">
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">
+            Причина отмены (В чём бот ошибся?) <span class="text-rose-400">*</span>
+          </label>
+          <textarea id="modal-annul-input-reason" rows="3" required
+                    class="w-full p-3 bg-[#1a2333] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 font-sans text-xs"
+                    placeholder="Например: Это была дружеская ирония, а не токсичность. Или: Участник предупреждал за 2 часа до встречи."></textarea>
+        </div>
+
+        <div class="bg-[#162032]/60 border border-purple-500/30 rounded-xl p-3 space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="modal-annul-learn-checkbox" checked onchange="toggleCustomRuleInput()"
+                   class="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-purple-500">
+            <span class="font-semibold text-purple-300 text-xs">🎓 Обучить бота на этой ошибке (создать правило)</span>
+          </label>
+          <p class="text-[11px] text-slate-400 leading-normal pl-6">
+            ИИ проанализирует ошибку и сформирует строгое правило поведения, которое сразу запишется в систему обучения (<a href="#" onclick="closeModal('modal-annul-verdict'); switchTab('lessons'); return false;" class="text-purple-400 hover:underline">Уроки</a>) и предотвратит повторение ошибки.
+          </p>
+
+          <div id="modal-annul-custom-rule-wrap" class="pt-1 pl-6">
+            <label class="block text-[11px] font-medium text-slate-400 mb-1">Своя формулировка правила (необязательно, если пусто — сгенерирует ИИ):</label>
+            <input type="text" id="modal-annul-custom-rule"
+                   placeholder="Например: Не считать токсичностью подколы про Доту..."
+                   class="w-full px-3 py-2 bg-[#0f172a] border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-annul-verdict')"
+                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Отмена</button>
+        <button id="modal-annul-submit-btn" onclick="submitAnnulVerdict()"
+                class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs shadow-lg transition flex items-center gap-1.5">
+          <span>❌ Аннулировать и вернуть баллы</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- CLIENT-SIDE LOGIC -->
   <script>
     let state = {
@@ -1195,6 +1368,11 @@ def get_admin_html() -> str:
       users: [],
       selectedUserForPoints: null,
       selectedUserForAchievements: null,
+      verdicts: [],
+      verdictsFilterType: 'all',
+      verdictsFilterStatus: 'all',
+      verdictsSearch: '',
+      selectedVerdictForAnnul: null,
       lessons: [],
       lessonsFilter: 'all',
       lessonsVerdictFilter: 'all',
@@ -1363,6 +1541,7 @@ def get_admin_html() -> str:
       state.currentChatId = select.value;
       if (state.activeTab === 'chat') loadChatMessages(true);
       if (state.activeTab === 'users') loadUsers();
+      if (state.activeTab === 'verdicts') loadVerdicts();
       if (state.activeTab === 'lore') loadFactsAndLore();
       if (state.activeTab === 'agreements') loadAgreements();
       if (state.activeTab === 'lessons') loadLessons();
@@ -1386,6 +1565,7 @@ def get_admin_html() -> str:
       if (tabId === 'config') loadConfig();
       if (tabId === 'prompts') loadPrompts();
       if (tabId === 'users') loadUsers();
+      if (tabId === 'verdicts') loadVerdicts();
       if (tabId === 'lore') loadFactsAndLore();
       if (tabId === 'agreements') loadAgreements();
       if (tabId === 'lessons') loadLessons();
@@ -2014,12 +2194,263 @@ def get_admin_html() -> str:
     async function revertLedgerEvent(eventId) {
       if (!confirm('Откатить это начисление очков и вернуть баланс?')) return;
       try {
-        await apiRequest(`/api/admin/chats/${state.currentChatId}/points_ledger/${eventId}`, { method: 'DELETE' });
-        showToast('Событие успешно отменено!');
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/points_ledger/${eventId}/annul`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: 'Откат из журнала аудита', learn_lesson: false })
+        });
+        showToast('Событие успешно аннулировано!');
         showLedgerModal();
         loadUsers();
       } catch (err) {
         showToast('Ошибка отката: ' + err.message, 'error');
+      }
+    }
+
+    // --- TAB: VERDICTS & POINTS AUDIT ---
+    async function loadVerdicts() {
+      if (!state.currentChatId) return;
+      const tbody = document.getElementById('verdicts-table-body');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500">Загрузка решений...</td></tr>';
+      try {
+        const data = await apiRequest(`/api/admin/chats/${state.currentChatId}/points_ledger?limit=200`);
+        state.verdicts = data.events || [];
+        updateVerdictsStats(state.verdicts);
+        renderVerdictsTable(state.verdicts);
+      } catch (err) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-rose-400">Ошибка загрузки: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function updateVerdictsStats(events) {
+      let total = events.length;
+      let penaltiesCount = 0;
+      let penaltiesPts = 0;
+      let rewardsCount = 0;
+      let rewardsPts = 0;
+      let annulledCount = 0;
+
+      events.forEach(ev => {
+        const delta = ev.points_delta || 0;
+        const isAnnulled = ev.is_annulled || ev.status === 'annulled';
+        if (isAnnulled) {
+          annulledCount++;
+        } else if (delta > 0) {
+          penaltiesCount++;
+          penaltiesPts += delta;
+        } else if (delta < 0) {
+          rewardsCount++;
+          rewardsPts += Math.abs(delta);
+        }
+      });
+
+      const elTotal = document.getElementById('verdicts-stat-total');
+      if (elTotal) elTotal.innerText = total;
+
+      const elPen = document.getElementById('verdicts-stat-penalties');
+      if (elPen) elPen.innerText = penaltiesCount;
+      const elPenPts = document.getElementById('verdicts-stat-penalties-pts');
+      if (elPenPts) elPenPts.innerText = `+${penaltiesPts} pts начислено`;
+
+      const elRew = document.getElementById('verdicts-stat-rewards');
+      if (elRew) elRew.innerText = rewardsCount;
+      const elRewPts = document.getElementById('verdicts-stat-rewards-pts');
+      if (elRewPts) elRewPts.innerText = `-${rewardsPts} pts списано`;
+
+      const elAnn = document.getElementById('verdicts-stat-annulled');
+      if (elAnn) elAnn.innerText = annulledCount;
+    }
+
+    function filterVerdictsTable() {
+      const search = (document.getElementById('verdicts-search-input')?.value || '').toLowerCase().trim();
+      const typeFilter = document.getElementById('verdicts-type-filter')?.value || 'all';
+      const statusFilter = document.getElementById('verdicts-status-filter')?.value || 'all';
+
+      const filtered = state.verdicts.filter(ev => {
+        const isAnnulled = ev.is_annulled || ev.status === 'annulled';
+        if (statusFilter === 'active' && isAnnulled) return false;
+        if (statusFilter === 'annulled' && !isAnnulled) return false;
+
+        if (typeFilter !== 'all' && ev.event_type !== typeFilter) return false;
+
+        if (search) {
+          const matchUser = (ev.username || '').toLowerCase().includes(search) || (ev.full_name || '').toLowerCase().includes(search) || String(ev.user_id || '').includes(search);
+          const matchReason = (ev.reason || '').toLowerCase().includes(search);
+          const matchId = (ev.id || '').toLowerCase().includes(search);
+          if (!matchUser && !matchReason && !matchId) return false;
+        }
+        return true;
+      });
+
+      renderVerdictsTable(filtered);
+    }
+
+    function renderVerdictsTable(events) {
+      const tbody = document.getElementById('verdicts-table-body');
+      if (!tbody) return;
+      if (!events || events.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500">Решений не найдено</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = events.map(ev => {
+        const delta = ev.points_delta || 0;
+        const isAnnulled = ev.is_annulled || ev.status === 'annulled';
+        const userDisplay = ev.username ? `@${escapeHtml(ev.username)}` : (ev.full_name ? escapeHtml(ev.full_name) : `ID ${ev.user_id}`);
+        const fullNameSub = ev.full_name && ev.username ? `<span class="text-[10px] text-slate-500 block">${escapeHtml(ev.full_name)}</span>` : '';
+
+        // Format date
+        let dateStr = '—';
+        if (ev.created_at) {
+          try {
+            const d = new Date(ev.created_at);
+            dateStr = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          } catch(e) {
+            dateStr = String(ev.created_at).slice(0, 16);
+          }
+        } else if (ev.week_key) {
+          dateStr = ev.week_key;
+        }
+
+        // Type badge
+        let typeBadge = '';
+        switch(ev.event_type) {
+          case 'report':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">🎯 Донос</span>';
+            break;
+          case 'spontaneous_verdict':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">⚖️ Спонтанный</span>';
+            break;
+          case 'daily_analysis':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">📅 Судья дня</span>';
+            break;
+          case 'gamble':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🎰 Казино</span>';
+            break;
+          case 'false_report':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">⚠️ Ложный</span>';
+            break;
+          case 'admin_adjustment':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">🛠 Админ</span>';
+            break;
+          case 'weekly_amnesty':
+            typeBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👑 Амнистия</span>';
+            break;
+          default:
+            typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700 text-slate-300">${escapeHtml(ev.event_type || '—')}</span>`;
+        }
+
+        // Delta styling
+        const deltaFormatted = delta > 0 ? `+${delta}` : (delta < 0 ? `${delta}` : '0');
+        const deltaClass = delta > 0 ? (isAnnulled ? 'text-slate-500 line-through' : 'text-rose-400 font-bold') : (delta < 0 ? (isAnnulled ? 'text-slate-500 line-through' : 'text-emerald-400 font-bold') : 'text-slate-400');
+
+        // Status badge
+        const statusBadge = isAnnulled
+          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">❌ Аннулирован</span>`
+          : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Активен</span>`;
+
+        // Annulled info if present
+        let annulReasonHtml = '';
+        if (isAnnulled && ev.annul_reason) {
+          annulReasonHtml = `<div class="text-[10px] text-amber-400/90 mt-1 flex items-center gap-1"><span>Отмена:</span> <span class="italic text-slate-300">${escapeHtml(ev.annul_reason)}</span></div>`;
+        }
+
+        // Action button
+        const actionHtml = isAnnulled
+          ? '<span class="text-[11px] text-slate-500 italic">Аннулировано</span>'
+          : `<button onclick="openAnnulModal('${escapeHtml(ev.id)}')"
+                     class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1 ml-auto">
+               <span>❌</span> <span>Аннулировать</span>
+             </button>`;
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition ${isAnnulled ? 'opacity-65' : ''}">
+            <td class="py-3 px-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">${escapeHtml(dateStr)}</td>
+            <td class="py-3 px-4">
+              <span class="font-semibold text-slate-200">${userDisplay}</span>
+              ${fullNameSub}
+            </td>
+            <td class="py-3 px-4 text-center">${typeBadge}</td>
+            <td class="py-3 px-4 text-center font-mono text-xs ${deltaClass}">${deltaFormatted}</td>
+            <td class="py-3 px-4 text-xs max-w-xs">
+              <div class="${isAnnulled ? 'line-through text-slate-400' : 'text-slate-200'}">${escapeHtml(ev.reason || '—')}</div>
+              ${annulReasonHtml}
+            </td>
+            <td class="py-3 px-4 text-center whitespace-nowrap">${statusBadge}</td>
+            <td class="py-3 px-4 text-right whitespace-nowrap">${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function openAnnulModal(eventId) {
+      const ev = state.verdicts.find(x => x.id === eventId);
+      if (!ev) return;
+      state.selectedVerdictForAnnul = ev;
+
+      const delta = ev.points_delta || 0;
+      const userDisplay = ev.username ? `@${ev.username}` : (ev.full_name || `ID ${ev.user_id}`);
+      document.getElementById('modal-annul-event-id').value = ev.id;
+      document.getElementById('modal-annul-user').innerText = userDisplay;
+      
+      const elDelta = document.getElementById('modal-annul-delta');
+      elDelta.innerText = delta > 0 ? `+${delta} pts (Штраф)` : `${delta} pts (Списание)`;
+      elDelta.className = delta > 0 ? 'font-bold font-mono text-rose-400' : 'font-bold font-mono text-emerald-400';
+
+      document.getElementById('modal-annul-reason').innerText = ev.reason || 'Без указания причины';
+      document.getElementById('modal-annul-input-reason').value = '';
+      document.getElementById('modal-annul-custom-rule').value = '';
+      document.getElementById('modal-annul-learn-checkbox').checked = true;
+      toggleCustomRuleInput();
+
+      openModal('modal-annul-verdict');
+    }
+
+    function toggleCustomRuleInput() {
+      const cb = document.getElementById('modal-annul-learn-checkbox');
+      const wrap = document.getElementById('modal-annul-custom-rule-wrap');
+      if (wrap) wrap.style.display = cb && cb.checked ? 'block' : 'none';
+    }
+
+    async function submitAnnulVerdict() {
+      const eventId = document.getElementById('modal-annul-event-id').value;
+      const reason = document.getElementById('modal-annul-input-reason').value.trim();
+      if (!reason) {
+        showToast('Укажите причину аннулирования решения', 'error');
+        return;
+      }
+      const learn = document.getElementById('modal-annul-learn-checkbox').checked;
+      const customRule = document.getElementById('modal-annul-custom-rule').value.trim();
+
+      const btn = document.getElementById('modal-annul-submit-btn');
+      const oldHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Аннулирование...</span>';
+
+      try {
+        const res = await apiRequest(`/api/admin/chats/${state.currentChatId}/points_ledger/${eventId}/annul`, {
+          method: 'POST',
+          body: JSON.stringify({
+            reason: reason,
+            learn_lesson: learn,
+            custom_rule: customRule || null
+          })
+        });
+
+        closeModal('modal-annul-verdict');
+
+        let msg = 'Решение успешно аннулировано, очки возвращены!';
+        if (res.lesson && res.lesson.learned_rule) {
+          msg += ` 🎓 Создан новый урок: "${res.lesson.learned_rule.slice(0, 45)}..."`;
+        }
+        showToast(msg, 'success');
+
+        await loadVerdicts();
+        loadUsers();
+      } catch (err) {
+        showToast('Ошибка аннулирования: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
       }
     }
 

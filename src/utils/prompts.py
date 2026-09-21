@@ -20,8 +20,8 @@ def get_system_prompt(lore_json: str, verified_facts: str = "", current_context:
         active_agreements=active_agreements
     )
 
-def get_report_validation_prompt(lore_json: str = "{}", active_agreements: str = "") -> str:
-    return PromptService.format_report_validation_prompt(lore_json=lore_json, active_agreements=active_agreements)
+def get_report_validation_prompt(lore_json: str = "{}", active_agreements: str = "", lessons: list = None) -> str:
+    return PromptService.format_report_validation_prompt(lore_json=lore_json, active_agreements=active_agreements, lessons=lessons)
 
 def get_cynical_comment_prompt(
     lore_json: str,
@@ -29,7 +29,8 @@ def get_cynical_comment_prompt(
     current_context: str = "",
     mood_instruction: str = "",
     social_context: str = "",
-    debts_context: str = ""
+    debts_context: str = "",
+    lessons: list = None
 ) -> str:
     return PromptService.format_cynical_comment_prompt(
         lore_json=lore_json,
@@ -37,7 +38,8 @@ def get_cynical_comment_prompt(
         current_context=current_context,
         mood_instruction=mood_instruction,
         social_context=social_context,
-        debts_context=debts_context
+        debts_context=debts_context,
+        lessons=lessons
     )
 
 def get_memory_summarization_prompt() -> str:

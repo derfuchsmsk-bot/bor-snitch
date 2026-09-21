@@ -158,9 +158,18 @@ async def validate_report(
             "required": ["thought_process", "valid", "reason"]
         }
 
+        lessons = []
+        if chat_id:
+            try:
+                from src.services.learning import LearningService
+                lessons = await LearningService.get_active_lessons(chat_id)
+            except Exception as e:
+                logging.warning(f"Could not load lessons for chat {chat_id} in report validation: {e}")
+
         validation_system_prompt = get_report_validation_prompt(
             lore_json=lore_json,
-            active_agreements=agreements_text
+            active_agreements=agreements_text,
+            lessons=lessons
         )
 
         return await model.generate_content_async(
@@ -640,6 +649,14 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
                 if lines:
                     debts_context = "ТЕКУЩИЕ ДОЛГИ УЧАСТНИКОВ:\n" + "\n".join(lines)
         
+        lessons = []
+        if chat_id:
+            try:
+                from src.services.learning import LearningService
+                lessons = await LearningService.get_active_lessons(chat_id)
+            except Exception as e:
+                logging.warning(f"Could not load lessons for chat {chat_id} in cynical comment: {e}")
+
         comment_properties = {
             "comment": {
                 "type": "STRING",
@@ -701,7 +718,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
                         current_context=context_str_lore,
                         mood_instruction=mood.tone_instruction,
                         social_context=social_context,
-                        debts_context=debts_context
+                        debts_context=debts_context,
+                        lessons=lessons
                     ), 
                     prompt
                 ],
