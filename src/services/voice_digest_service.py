@@ -77,10 +77,15 @@ class VoiceDigestService:
         prompt = get_voice_digest_prompt(
             edition_type=edition_type,
             lore_json=lore_json,
-            active_agreements=agreements_str,
-            offenders_summary=offenders_summary,
-            current_context=logs_summary
+            active_agreements=agreements_text,
+            offenders_summary=offenders_text,
+            current_context=context_str
         )
+        
+        moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+        current_time_str = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S (МСК)")
+        prompt = f"ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ СЕЙЧАС: {current_time_str}\n\n" + prompt
+
         prompt += "\n\nВАЖНОЕ ТРЕБОВАНИЕ: Твой ответ ОБЯЗАН быть СТРОГО НА РУССКОМ ЯЗЫКЕ! Напиши подробный монолог на 220-320 слов (хронометраж 1.5 - 2 минуты речи). Подробно пройдись по всем событиям дня!"
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)

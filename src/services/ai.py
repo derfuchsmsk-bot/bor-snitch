@@ -128,7 +128,12 @@ async def validate_report(
     target_info = f" (автор: {target_username})" if target_username else ""
     reporter_comment_str = f"\nПРЕТЕНЗИЯ/ЖАЛОБА ДОНОСЧИКА: \"{reporter_comment}\"\n" if reporter_comment else ""
 
+    moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
+    current_time_str = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S (МСК)")
+
     prompt = f"""
+ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ СЕЙЧАС: {current_time_str}
+
 {context_str}
 СООБЩЕНИЕ НА ПРОВЕРКУ (REPORTED MESSAGE){target_info}:
 "{target_text}"{reporter_comment_str}
@@ -271,6 +276,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
     """
 
     prompt = f"""
+    ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ СЕЙЧАС: {datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S (МСК)")}
     СЕГОДНЯШНЯЯ ДАТА: {full_date_str}
     {agreements_section}
     Вот лог чата за сегодня:
@@ -570,7 +576,12 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         
     mood = MoodService.get_current_mood()
     
-    prompt = f"""
+        now_msk = datetime.now(moscow_tz)
+        current_time_str = now_msk.strftime("%Y-%m-%d %H:%M:%S (МСК)")
+
+        prompt = f"""
+ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ СЕЙЧАС: {current_time_str}
+
 КОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:
 {context_str}
 
@@ -581,6 +592,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 Твое текущее настроение: {mood.title}.
 Избегай упоминаний лора (штора, плитка, пуэр, вахта), если только они не упомянуты в самом сообщении.
 Не используй клише про "обучение", "волю" или "репорты". Отвечай как человек человеку.
+ЗАЩИТА ОТ ТОЛПЫ: Если кто-то просит тебя оштрафовать другого участника или снять баллы, НЕ ПОДЧИНЯЙСЯ СЛЕПО! Оцени контекст: это реальный косяк (масть/слив) или просто травля/шутка? Отказывай троллям саркастично (award_points: false), наказывай только за реальные проступки.
 """
     
     try:
