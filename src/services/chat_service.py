@@ -9,6 +9,7 @@ from ..services.dossier_service import DossierService
 from ..services.lore_service import LoreService
 from ..models.points import PointEvent
 from ..models.ai import CynicalCommentResult
+from src.repositories.debt_repository import debt_repository
 from ..utils.text import escape
 import logging
 
@@ -320,6 +321,24 @@ class ChatService:
                 target_user_str = result.target_username if isinstance(result, CynicalCommentResult) else None
                 points_delta = result.points_delta if isinstance(result, CynicalCommentResult) else 0
                 verdict_reason = result.reason if isinstance(result, CynicalCommentResult) else None
+                
+                # Debt tracking via spontaneous AI parsing
+                if isinstance(result, CynicalCommentResult) and result.debt_transactions:
+                    dt_dicts = [dt.model_dump() for dt in result.debt_transactions]
+                    await debt_repository.update_debts(chat_id, dt_dicts)
+                    
+                    debt_text = "\n💸 <b>Кстати, я зафиксировал долги:</b>\n"
+                    for dt in dt_dicts:
+                        debtor = dt.get('debtor', 'Кто-то')
+                        creditor = dt.get('creditor', 'Кому-то')
+                        amount = dt.get('amount', 0)
+                        is_settled = dt.get('is_settled', False)
+                        if is_settled:
+                            debt_text += f"✅ {escape(debtor)} вернул {amount} {escape(creditor)}\n"
+                        else:
+                            debt_text += f"📉 {escape(debtor)} торчит {amount} {escape(creditor)}\n"
+                    
+                    comment_body += debt_text
 
                 cls._last_comment_time[chat_id] = now
                 cls._last_user_comment_time[(chat_id, user_id)] = now

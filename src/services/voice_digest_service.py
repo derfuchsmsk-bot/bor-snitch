@@ -2,7 +2,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 from vertexai.generative_models import GenerativeModel, HarmCategory, HarmBlockThreshold
 from aiogram.types import BufferedInputFile
+from google.cloud import firestore
 
+from src.services.db import db
 from src.utils.game_config import config
 from src.utils.prompts import get_voice_digest_prompt
 from src.utils.text import escape
@@ -140,40 +142,69 @@ class VoiceDigestService:
             logger.info("Bot is disabled, skipping voice digest.")
             return {"status": "skipped", "reason": "bot_disabled"}
 
+        if chat_id > 0:
+            logger.info(f"Skipping voice digest for private chat {chat_id}.")
+            return {"status": "skipped", "reason": "pm_chat"}
+
         if not getattr(config, "VOICE_DIGEST_ENABLED", True):
             logger.info("Voice digests are disabled in config, skipping.")
             return {"status": "skipped", "reason": "voice_digest_disabled"}
 
-        script = await cls.generate_digest_script(chat_id, edition_type)
-        audio_bytes, audio_format = await TTSService.synthesize_speech(script)
+        # Distributed lock to prevent multiple cloud instances from generating duplicate voice digests
+        lock_ref = db.collection("chats").document(str(chat_id)).collection("locks").document("voice_digest")
+        try:
+            lock_doc = await lock_ref.get()
+            now_utc = datetime.now(timezone.utc)
+            if lock_doc.exists:
+                lock_data = lock_doc.to_dict()
+                lock_time = lock_data.get("timestamp")
+                if lock_time:
+                    if lock_time.tzinfo is None:
+                        lock_time = lock_time.replace(tzinfo=timezone.utc)
+                    if now_utc - lock_time < timedelta(minutes=5):
+                        logger.warning(f"Voice digest for chat {chat_id} is already running (locked). Skipping.")
+                        return {"status": "locked"}
+            
+            await lock_ref.set({"timestamp": firestore.SERVER_TIMESTAMP})
+        except Exception as e:
+            logger.error(f"Error checking voice digest lock for chat {chat_id}: {e}")
 
-        if send_to_telegram and bot:
-            if "дневн" in edition_type.lower() or "14:00" in edition_type:
-                title = "🎙️ ОБЕДЕННАЯ ХРОНИКА САЙОНАРЫ (14:00)"
-            elif "вечерн" in edition_type.lower() or "22:00" in edition_type:
-                title = "📻 ВЕЧЕРНИЙ ПРИГОВОР САЙОНАРЫ (22:00)"
-            else:
-                title = f"🎙️ {edition_type.upper()}"
+        try:
+            script = await cls.generate_digest_script(chat_id, edition_type)
+            audio_bytes, audio_format = await TTSService.synthesize_speech(script)
 
-            caption = f"<b>{title}</b>"
+            if send_to_telegram and bot:
+                if "дневн" in edition_type.lower() or "14:00" in edition_type:
+                    title = "🎙️ ОБЕДЕННАЯ ХРОНИКА САЙОНАРЫ (14:00)"
+                elif "вечерн" in edition_type.lower() or "22:00" in edition_type:
+                    title = "📻 ВЕЧЕРНИЙ ПРИГОВОР САЙОНАРЫ (22:00)"
+                else:
+                    title = f"🎙️ {edition_type.upper()}"
 
-            voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.{audio_format}")
+                caption = f"<b>{title}</b>"
+
+                voice_file = BufferedInputFile(audio_bytes, filename=f"snitch_digest_{chat_id}.{audio_format}")
+                try:
+                    await bot.send_voice(
+                        chat_id=chat_id,
+                        voice=voice_file,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                    logger.info(f"Voice digest sent to Telegram chat {chat_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send voice message to chat {chat_id}: {e}")
+                    raise
+
+            return {
+                "status": "success",
+                "chat_id": chat_id,
+                "edition": edition_type,
+                "script": script,
+                "audio_bytes_length": len(audio_bytes)
+            }
+        finally:
             try:
-                await bot.send_voice(
-                    chat_id=chat_id,
-                    voice=voice_file,
-                    caption=caption,
-                    parse_mode="HTML"
-                )
-                logger.info(f"Voice digest sent to Telegram chat {chat_id}")
+                await lock_ref.delete()
             except Exception as e:
-                logger.error(f"Failed to send voice message to chat {chat_id}: {e}")
-                raise
-
-        return {
-            "status": "success",
-            "chat_id": chat_id,
-            "edition": edition_type,
-            "script": script,
-            "audio_bytes_length": len(audio_bytes)
-        }
+                logger.error(f"Failed to release voice digest lock for chat {chat_id}: {e}")

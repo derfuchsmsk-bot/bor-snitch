@@ -520,6 +520,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     Generates a short, cynical comment based on context, optionally with spontaneous judgment.
     Returns CynicalCommentResult or None.
     """
+    from src.repositories.debt_repository import debt_repository
+    
     import hashlib
     # Deterministic cache key based on chat, normalized text, and signature of latest messages
     recent_ids = ":".join(str(msg.get('message_id') or msg.get('text', '')) for msg in context_msgs[-3:])
@@ -532,15 +534,37 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 
     model = GenerativeModel(config.AI_MODEL_ANALYSIS)
     
-    context_str = ""
+    # Filter context_msgs by time to simulate a "new chat/session" if there was a long pause (e.g., > 3 hours)
+    now_utc = datetime.now(timezone.utc)
+    filtered_context = []
     for msg in context_msgs:
+        ts = msg.get('timestamp')
+        if ts:
+            if hasattr(ts, 'tzinfo') and ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            
+            # If the message is older than 3 hours, skip it (break the session)
+            if (now_utc - ts).total_seconds() > 3 * 3600:
+                continue
+        filtered_context.append(msg)
+    
+    context_str = ""
+    for msg in filtered_context:
         name = msg.get('username', 'Unknown')
-        if msg.get('is_bot') or name == "YOU (Snitch Bot)":
+        is_bot = msg.get('is_bot') or name == "YOU (Snitch Bot)"
+        if is_bot:
             name = "YOU (Snitch Bot)"
 
         txt = msg.get('text', '')
         if txt == current_text:
             continue
+            
+        # Truncate text to prevent context bloat and dialog loop hallucination
+        if is_bot and len(txt) > 150:
+            txt = txt[:150] + "... [сокращено]"
+        elif len(txt) > 300:
+            txt = txt[:300] + "... [сокращено]"
+
         context_str += f"- {name}: {txt}\n"
         
     mood = MoodService.get_current_mood()
@@ -570,6 +594,18 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         facts_str = await FactService.get_facts_as_str(chat_id, limit=7) if chat_id else ""
         context_str_lore = lore_full.get('current_context', "")
         social_context = await DossierService.get_social_graph_context(chat_id, filter_user_ids=active_user_ids) if chat_id else ""
+        
+        debts_context = ""
+        if chat_id:
+            balances = await debt_repository.get_debts(chat_id)
+            if balances:
+                lines = []
+                for debtor, creditors in balances.items():
+                    for creditor, amount in creditors.items():
+                        if amount > 0:
+                            lines.append(f"{debtor} должен {creditor}: {amount}")
+                if lines:
+                    debts_context = "ТЕКУЩИЕ ДОЛГИ УЧАСТНИКОВ:\n" + "\n".join(lines)
         
         comment_schema = {
             "type": "OBJECT",
@@ -612,7 +648,8 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
                         verified_facts=facts_str, 
                         current_context=context_str_lore,
                         mood_instruction=mood.tone_instruction,
-                        social_context=social_context
+                        social_context=social_context,
+                        debts_context=debts_context
                     ), 
                     prompt
                 ],

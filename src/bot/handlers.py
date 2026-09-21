@@ -160,6 +160,33 @@ async def cmd_dispute(message: types.Message):
         else:
              await message.answer(messages.AGREEMENT_DISPUTE_NOT_FOUND, parse_mode="HTML")
 
+@router.message(Command("debts", "split"))
+async def cmd_debts(message: types.Message):
+    if config.BOT_DISABLED:
+        return
+        
+    from src.repositories.debt_repository import debt_repository
+    balances = await debt_repository.get_debts(message.chat.id)
+    
+    if not balances:
+        await message.answer("💸 <b>Долгов нет!</b> Все чисты перед пацанами.", parse_mode="HTML")
+        return
+        
+    text = "💸 <b>КТО КОМУ ТОРЧИТ (Долговая книга Снитча):</b>\n\n"
+    has_debts = False
+    
+    for debtor, creditors in balances.items():
+        for creditor, amount in creditors.items():
+            if amount > 0:
+                has_debts = True
+                text += f"📉 <b>{escape(debtor.capitalize())}</b> торчит <b>{escape(creditor.capitalize())}</b>: {amount}\n"
+                
+    if not has_debts:
+        text = "💸 <b>Долгов нет!</b> Все чисты перед пацанами."
+        
+    text += "\n<i>(Снитч сам читает ваши переписки и фиксирует долги. Чтобы погасить долг, просто напишите в чат «Я скинул/вернул Васе 500»)</i>"
+    await message.answer(text, parse_mode="HTML")
+
 @router.message(Command("all"))
 async def cmd_all(message: types.Message):
     if config.BOT_DISABLED:
@@ -320,6 +347,37 @@ async def cmd_remember(message: types.Message):
             await status_msg.edit_text("✅ <b>Запомнил.</b> Теперь это истина.", parse_mode="HTML")
     else:
         await status_msg.edit_text("❌ Не удалось запомнить. Видимо, я перегружен.")
+
+@router.message(Command("forget", "clear_memory"))
+async def cmd_forget(message: types.Message):
+    """
+    Clears the chat's contextual memory and lore if the bot gets too cluttered.
+    """
+    if config.BOT_DISABLED:
+        return
+        
+    from src.services.lore_service import LoreService
+    from src.services.fact_service import FactService
+    
+    chat_id = message.chat.id
+    
+    # 1. Reset Lore
+    default_lore = {
+        "core": {
+            "universe": "Cynical Snitch Bot Ecosystem",
+            "characters": [],
+            "concepts": [],
+            "dictionary": {}
+        },
+        "current_context": "Контекст был очищен по запросу пользователя.",
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await LoreService.update_lore(chat_id, default_lore, generated_by="manual_forget")
+    
+    # 2. Invalidate caches
+    FactService.invalidate_cache(chat_id)
+    
+    await message.reply("🧹 <b>Память и текущий контекст очищены!</b>\nЯ забыл все недавние события и сбросил лор. Теперь я как новенький.", parse_mode="HTML")
 
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):

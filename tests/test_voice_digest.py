@@ -74,7 +74,7 @@ async def test_voice_digest_creation_and_send():
         mock_tts.return_value = (b"FAKE_OGG_BYTES", "mp3")
 
         result = await VoiceDigestService.create_and_send_voice_digest(
-            chat_id=123456,
+            chat_id=-123456,
             edition_type="Дневной выпуск (14:00)",
             bot=mock_bot,
             send_to_telegram=True
@@ -83,7 +83,7 @@ async def test_voice_digest_creation_and_send():
         assert result["status"] == "success"
         assert "криминальной хроники" in result["script"]
         assert mock_bot.send_voice.called
-        assert mock_bot.send_voice.call_args[1]["chat_id"] == 123456
+        assert mock_bot.send_voice.call_args[1]["chat_id"] == -123456
 
 
 @pytest.mark.anyio
@@ -94,14 +94,14 @@ async def test_voice_digest_api_endpoint():
     with patch.object(VoiceDigestService, "create_and_send_voice_digest", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {
             "status": "success",
-            "chat_id": 123456,
+            "chat_id": -123456,
             "script": "Тестовый выпуск.",
             "audio_bytes_length": 500
         }
 
         resp = client.post(
             "/api/admin/actions/voice_digest",
-            json={"chat_id": "123456", "edition_type": "Дневной выпуск (14:00)", "send_telegram": False},
+            json={"chat_id": "-123456", "edition_type": "Дневной выпуск (14:00)", "send_telegram": False},
             headers=headers
         )
         assert resp.status_code == 200

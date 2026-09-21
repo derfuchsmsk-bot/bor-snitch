@@ -18,14 +18,16 @@ def get_cynical_comment_prompt(
     verified_facts: str = "",
     current_context: str = "",
     mood_instruction: str = "",
-    social_context: str = ""
+    social_context: str = "",
+    debts_context: str = ""
 ) -> str:
     return PromptService.format_cynical_comment_prompt(
         lore_json=lore_json,
         verified_facts=verified_facts,
         current_context=current_context,
         mood_instruction=mood_instruction,
-        social_context=social_context
+        social_context=social_context,
+        debts_context=debts_context
     )
 
 def get_memory_summarization_prompt() -> str:

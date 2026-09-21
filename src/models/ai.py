@@ -28,12 +28,20 @@ class Offender(BaseModel):
     reason: str = Field(description="Обоснование вердикта")
     quote: Optional[str] = Field(None, description="Цитата сообщения с нарушением")
 
+class DebtTransaction(BaseModel):
+    debtor: str = Field(description="Кто должен деньги (username или имя, без @).")
+    creditor: str = Field(description="Кому должны (username или имя, без @)")
+    amount: int = Field(description="Сумма долга (в числах, например 500)")
+    reason: str = Field(description="За что долг (например: за шаурму, за такси, скинулись на ДР)")
+    is_settled: bool = Field(default=False, description="True если это сообщение о ВОЗВРАТЕ долга")
+
 class DailyAnalysisResult(BaseModel):
     thought_process: str = Field(description="Подробный разбор полетов и анализ ситуации перед вынесением вердикта")
     offenders: List[Offender] = Field(default_factory=list, description="Список нарушителей")
     new_agreements: List[NewAgreement] = Field(default_factory=list, description="Список новых договоренностей")
     resolved_agreements: List[ResolvedAgreement] = Field(default_factory=list, description="Список завершенных/нарушенных договоренностей")
     updated_agreements: List[UpdatedAgreement] = Field(default_factory=list, description="Список обновленных договоренностей")
+    debt_transactions: List[DebtTransaction] = Field(default_factory=list, description="Новые долги или возвраты долгов, упомянутые в чате")
 
 class ReportValidationResult(BaseModel):
     thought_process: str = Field("", description="Размышления о контексте и справедливости жалобы")
@@ -70,3 +78,4 @@ class CynicalCommentResult(BaseModel):
     target_username: Optional[str] = Field(None, description="Username или имя участника для начисления/снятия очков")
     points_delta: int = Field(default=0, description="Дельта очков (+25..+75 за масть, -25..-50 за людское)")
     reason: Optional[str] = Field(None, description="Краткая причина вердикта")
+    debt_transactions: List[DebtTransaction] = Field(default_factory=list, description="Если в сообщении идет речь о долгах, расходах или переводах, зафиксируй их здесь")

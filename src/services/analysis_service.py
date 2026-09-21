@@ -16,6 +16,7 @@ from src.services.db import (
 )
 from src.services.ai import analyze_daily_logs, summarize_day
 from src.services.learning import LearningService
+from src.repositories.debt_repository import debt_repository
 
 class AnalysisService:
     def __init__(self, bot: Bot):
@@ -90,7 +91,8 @@ class AnalysisService:
             "offenders": [],
             "new_agreements": [],
             "resolved_agreements": [],
-            "updated_agreements": []
+            "updated_agreements": [],
+            "debt_transactions": []
         }
         
         if ai_result:
@@ -101,6 +103,10 @@ class AnalysisService:
                 final_result["new_agreements"].extend([ag.model_dump() for ag in ai_result.new_agreements])
                 final_result["resolved_agreements"].extend([res.model_dump() for res in ai_result.resolved_agreements])
                 final_result["updated_agreements"].extend([upd.model_dump() for upd in ai_result.updated_agreements])
+            
+            if hasattr(ai_result, "debt_transactions") and ai_result.debt_transactions:
+                final_result["debt_transactions"].extend([dt.model_dump() for dt in ai_result.debt_transactions])
+                await debt_repository.update_debts(chat_id, final_result["debt_transactions"])
             
             if ai_result.thought_process:
                 final_result["ai_thought_process"] = ai_result.thought_process
@@ -275,8 +281,26 @@ class AnalysisService:
 
         new_agreements = [ag.model_dump() for ag in ai_result.new_agreements]
         updated_agreements = [upd.model_dump() for upd in ai_result.updated_agreements]
+        debt_transactions = getattr(ai_result, "debt_transactions", [])
         
         text = ""
+
+        if debt_transactions:
+            dt_dicts = [dt.model_dump() for dt in debt_transactions]
+            await debt_repository.update_debts(chat_id, dt_dicts)
+            
+            text += "\n💸 <b>Обновление по долгам:</b>\n"
+            for dt in dt_dicts:
+                debtor = dt.get('debtor', 'Кто-то')
+                creditor = dt.get('creditor', 'Кому-то')
+                amount = dt.get('amount', 0)
+                reason = dt.get('reason', '')
+                is_settled = dt.get('is_settled', False)
+                if is_settled:
+                    text += f"✅ {escape(debtor)} вернул {amount} {escape(creditor)} ({escape(reason)})\n"
+                else:
+                    text += f"📉 {escape(debtor)} торчит {amount} {escape(creditor)} ({escape(reason)})\n"
+
         if new_agreements:
             text += messages.NEW_AGREEMENTS_TITLE
             for ag in new_agreements:

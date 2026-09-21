@@ -144,7 +144,7 @@ DEFAULT_CYNICAL_COMMENT_TEMPLATE = """<lore_core>
 <current_context>
 {current_context}
 </current_context>
-{social_context}{mood_instruction}
+{social_context}{mood_instruction}{debts_context}
 Ты — участник чата, остроумный Снитч-бот. Ты давно в этой компании, ты их цифровой бро/судья.
 Твоя задача — ответить на последнюю реплику так, чтобы это выглядело как ЕСТЕСТВЕННАЯ, остроумная, живая часть диалога.
 Шути точно в цель, реагируй на реальный контекст, подкалывай по-доброму, живо и без канцелярита.
@@ -161,7 +161,10 @@ DEFAULT_CYNICAL_COMMENT_TEMPLATE = """<lore_core>
 4. СТИЛЬ И ФОРМАТ:
    - 1-2 коротких, емких, законченных предложения. Панчлайн должен быть метким.
    - Никаких занудных нотаций или избитых фраз.
-5. СУДЕЙСКИЕ ПОЛНОМОЧИЯ (СПОНТАННЫЙ ВЕРДИКТ И СПИСАНИЕ/НАЧИСЛЕНИЕ ОЧКОВ):
+5. ЗАПРЕТ НА ЗАЦИКЛИВАНИЕ (NO LOOPING):
+   - Не пытайся продолжать свои прошлые ответы. Не веди долгих бесед сам с собой.
+   - Отвечай ТОЛЬКО на актуальную реплику. Если контекст содержит твои старые длинные ответы — игнорируй их логику, чтобы не застревать в одной теме. Каждая твоя реплика должна быть свежей, независимой реакцией на текущий момент (как будто ты зашел в чат только что).
+6. СУДЕЙСКИЕ ПОЛНОМОЧИЯ (СПОНТАННЫЙ ВЕРДИКТ И СПИСАНИЕ/НАЧИСЛЕНИЕ ОЧКОВ):
    - Ты имеешь реальные полномочия начислять и списывать очки прямо в чате (`award_points: true`):
      * СПИСАНИЕ ОЧКОВ (Людское, поощрение, амнистия):
        - Если в чате обсуждается людской поступок (занос, простава, выручил кента, верный донос).
@@ -300,7 +303,8 @@ PROMPT_METADATA = {
             "verified_facts",
             "current_context",
             "social_context",
-            "mood_instruction"
+            "mood_instruction",
+            "debts_context"
         ],
         "default": DEFAULT_CYNICAL_COMMENT_TEMPLATE.strip()
     },
@@ -547,11 +551,13 @@ class PromptService:
         verified_facts: str = "",
         current_context: str = "",
         mood_instruction: str = "",
-        social_context: str = ""
+        social_context: str = "",
+        debts_context: str = ""
     ) -> str:
         template = cls.get_template("cynical_comment_prompt")
         mood_block = f"\n<mood>\n{mood_instruction}\n</mood>\n" if mood_instruction else ""
         social_block = f"\n<social_dossiers>\n{social_context}\n</social_dossiers>\n" if social_context else ""
+        debts_block = f"\n<debts_context>\n{debts_context}\n</debts_context>\n" if debts_context else ""
 
         values = {
             "lore_json": lore_json,
@@ -559,6 +565,7 @@ class PromptService:
             "current_context": current_context,
             "mood_instruction": mood_block,
             "social_context": social_block,
+            "debts_context": debts_block
         }
         return safe_substitute(template, values)
 

@@ -45,7 +45,7 @@ async def scheduled_agreement_check():
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
-            if not chat_data.get("active"):
+            if not chat_data.get("active") or not chat_doc.id.startswith("-"):
                 continue
             await analysis_service.perform_agreement_check(chat_doc.id)
     except Exception as e:
@@ -60,7 +60,7 @@ async def scheduled_daily_analysis():
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
-            if not chat_data.get("active"):
+            if not chat_data.get("active") or not chat_doc.id.startswith("-"):
                 continue
             
             chat_id = chat_doc.id
@@ -82,9 +82,9 @@ async def scheduled_weekly_decay():
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
-            if not chat_data.get("active"):
+            if not chat_data.get("active") or not chat_doc.id.startswith("-"):
                 continue
-                
+            
             chat_id = chat_doc.id
             logging.info(f"Applying amnesty for chat {chat_id}")
             await apply_weekly_amnesty(chat_id)
@@ -110,7 +110,7 @@ async def scheduled_lore_evolution():
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
-            if not chat_data.get("active"):
+            if not chat_data.get("active") or not chat_doc.id.startswith("-"):
                 continue
             
             chat_id = chat_doc.id
@@ -132,7 +132,7 @@ async def scheduled_voice_digest(edition_type: str):
         chats_ref = db.collection("chats")
         async for chat_doc in chats_ref.stream():
             chat_data = chat_doc.to_dict()
-            if not chat_data.get("active"):
+            if not chat_data.get("active") or not chat_doc.id.startswith("-"):
                 continue
             chat_id = chat_doc.id
             try:
@@ -202,8 +202,10 @@ async def sync_bot_commands():
                 types.BotCommand(command="report", description="Донос (Reply)"),
                 types.BotCommand(command="casino", description="Испытать удачу"),
                 types.BotCommand(command="all", description="Позвать всех"),
+                types.BotCommand(command="debts", description="Кто кому торчит (Долги)"),
                 types.BotCommand(command="digest", description="Голосовая хроника (Voice)"),
                 types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
+                types.BotCommand(command="forget", description="Сбросить лор (Очистка)"),
                 types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
             ]
             if config.ENABLE_AGREEMENTS:
