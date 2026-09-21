@@ -162,7 +162,7 @@ async def cmd_dispute(message: types.Message):
 
 @router.message(Command("debts", "split"))
 async def cmd_debts(message: types.Message):
-    if config.BOT_DISABLED:
+    if config.BOT_DISABLED or not getattr(config, "ENABLE_DEBTS", True):
         return
         
     from src.repositories.debt_repository import debt_repository

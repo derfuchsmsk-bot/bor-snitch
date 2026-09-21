@@ -321,6 +321,11 @@ def get_admin_html() -> str:
               <input type="number" id="cfg-CYNICAL_COMMENT_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
             </div>
 
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Разрыв сессии чата (часов)</label>
+              <input type="number" id="cfg-SESSION_TIMEOUT_HOURS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
+            </div>
+
             <div class="pt-3 border-t border-slate-800 space-y-3">
               <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
                 <div>
@@ -442,6 +447,16 @@ def get_admin_html() -> str:
                     <div class="text-[10px] text-slate-400">Команды /agreements и /dispute</div>
                   </div>
                   <input type="checkbox" id="cfg-ENABLE_AGREEMENTS" class="w-5 h-5 accent-sky-500 rounded cursor-pointer">
+                </label>
+              </div>
+
+              <div>
+                <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer h-full">
+                  <div>
+                    <div class="text-xs font-semibold text-white">Учет долгов (Сплитвил)</div>
+                    <div class="text-[10px] text-slate-400">Команда /debts и парсинг переводов</div>
+                  </div>
+                  <input type="checkbox" id="cfg-ENABLE_DEBTS" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer">
                 </label>
               </div>
 
@@ -832,6 +847,20 @@ def get_admin_html() -> str:
             <button onclick="runLoreEvolutionAction()" id="btn-action-evolution"
                     class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/30">
               <span>Запустить эволюцию</span>
+            </button>
+          </div>
+
+          <!-- Action: Forget Memory -->
+          <div class="bg-[#111827] border border-rose-900/30 rounded-2xl p-5 space-y-4 flex flex-col justify-between relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-transparent pointer-events-none"></div>
+            <div class="relative">
+              <div class="text-2xl mb-2">🔥</div>
+              <h3 class="text-sm font-bold text-rose-400">Сброс памяти (Forget)</h3>
+              <p class="text-xs text-slate-400 mt-1">Полностью удаляет лор и текущий контекст чата (эквивалент /forget). Решает проблему зацикливания.</p>
+            </div>
+            <button onclick="runForgetAction()" id="btn-action-forget"
+                    class="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 relative">
+              <span>Очистить память чата</span>
             </button>
           </div>
 
@@ -2599,6 +2628,29 @@ def get_admin_html() -> str:
       } finally {
         btn.disabled = false;
         btn.textContent = 'Запустить эволюцию';
+      }
+    }
+
+    async function runForgetAction() {
+      if (!confirm(`Вы уверены? Это сотрет ВЕСЬ накопленный лор и контекст для чата ${state.currentChatId}. Действие необратимо!`)) return;
+      const btn = document.getElementById('btn-action-forget');
+      btn.disabled = true;
+      btn.textContent = '⏳ Очистка...';
+      appendConsole(`Запуск очистки памяти для чата ${state.currentChatId}...`);
+      try {
+        const res = await apiRequest('/api/admin/actions/forget', {
+          method: 'POST',
+          body: JSON.stringify({ chat_id: state.currentChatId })
+        });
+        appendConsole(`Память чата очищена! Ответ: ${JSON.stringify(res)}`);
+        showToast('Память очищена!');
+        if (state.activeTab === 'lore') loadLore();
+      } catch (err) {
+        appendConsole(`ОШИБКА очистки: ${err.message}`);
+        showToast('Ошибка: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Очистить память чата';
       }
     }
 

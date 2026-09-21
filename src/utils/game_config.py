@@ -74,6 +74,10 @@ DEFAULT_CONFIG_VALUES = {
     # Time & Analysis
     "TIMEZONE_OFFSET": 3,
     "ANALYSIS_CUTOFF_HOUR": 4,
+    "SESSION_TIMEOUT_HOURS": 3,
+
+    # Debts
+    "ENABLE_DEBTS": True,
 
     # AI Models
     "AI_MODEL_ANALYSIS": "gemini-3.8-flash",

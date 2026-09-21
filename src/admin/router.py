@@ -779,6 +779,29 @@ async def action_check_agreements(body: CheckAgreementsActionRequest, admin=Depe
         raise HTTPException(status_code=500, detail=f"Ошибка проверки договоренностей: {str(e)}")
 
 
+@router.post("/api/admin/actions/forget")
+async def action_forget(body: ActionChatRequest, admin=Depends(get_current_admin)):
+    from src.services.fact_service import FactService
+    from datetime import datetime, timezone
+    try:
+        chat_id = int(body.chat_id)
+        default_lore = {
+            "core": {
+                "universe": "Cynical Snitch Bot Ecosystem",
+                "characters": [],
+                "concepts": [],
+                "dictionary": {}
+            },
+            "current_context": "Контекст был очищен из админ-панели.",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await LoreService.update_lore(chat_id, default_lore, generated_by="admin_forget")
+        FactService.invalidate_cache(chat_id)
+        return {"status": "success", "message": "Memory cleared"}
+    except Exception as e:
+        logger.error(f"Forget action failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка сброса памяти: {str(e)}")
+
 @router.post("/api/admin/actions/lore_evolution")
 async def action_lore_evolution(body: ActionChatRequest, admin=Depends(get_current_admin)):
     try:

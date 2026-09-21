@@ -104,7 +104,7 @@ class AnalysisService:
                 final_result["resolved_agreements"].extend([res.model_dump() for res in ai_result.resolved_agreements])
                 final_result["updated_agreements"].extend([upd.model_dump() for upd in ai_result.updated_agreements])
             
-            if hasattr(ai_result, "debt_transactions") and ai_result.debt_transactions:
+            if getattr(config, "ENABLE_DEBTS", True) and hasattr(ai_result, "debt_transactions") and ai_result.debt_transactions:
                 final_result["debt_transactions"].extend([dt.model_dump() for dt in ai_result.debt_transactions])
                 await debt_repository.update_debts(chat_id, final_result["debt_transactions"])
             

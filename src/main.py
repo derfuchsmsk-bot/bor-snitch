@@ -202,12 +202,14 @@ async def sync_bot_commands():
                 types.BotCommand(command="report", description="Донос (Reply)"),
                 types.BotCommand(command="casino", description="Испытать удачу"),
                 types.BotCommand(command="all", description="Позвать всех"),
-                types.BotCommand(command="debts", description="Кто кому торчит (Долги)"),
                 types.BotCommand(command="digest", description="Голосовая хроника (Voice)"),
                 types.BotCommand(command="remember", description="Запомнить факт (Lore)"),
                 types.BotCommand(command="forget", description="Сбросить лор (Очистка)"),
                 types.BotCommand(command="bot_disable", description="Отключить бота (Admin)"),
             ]
+            if getattr(config, "ENABLE_DEBTS", True):
+                commands.insert(6, types.BotCommand(command="debts", description="Кто кому торчит (Долги)"))
+                
             if config.ENABLE_AGREEMENTS:
                 commands.append(types.BotCommand(command="agreements", description="Список договоренностей"))
                 commands.append(types.BotCommand(command="dispute", description="Оспорить слово пацана"))

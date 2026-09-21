@@ -537,14 +537,15 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     # Filter context_msgs by time to simulate a "new chat/session" if there was a long pause (e.g., > 3 hours)
     now_utc = datetime.now(timezone.utc)
     filtered_context = []
+    session_timeout_sec = getattr(config, "SESSION_TIMEOUT_HOURS", 3) * 3600
     for msg in context_msgs:
         ts = msg.get('timestamp')
         if ts:
             if hasattr(ts, 'tzinfo') and ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             
-            # If the message is older than 3 hours, skip it (break the session)
-            if (now_utc - ts).total_seconds() > 3 * 3600:
+            # If the message is older than timeout, skip it (break the session)
+            if (now_utc - ts).total_seconds() > session_timeout_sec:
                 continue
         filtered_context.append(msg)
     
@@ -596,7 +597,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         social_context = await DossierService.get_social_graph_context(chat_id, filter_user_ids=active_user_ids) if chat_id else ""
         
         debts_context = ""
-        if chat_id:
+        if chat_id and getattr(config, "ENABLE_DEBTS", True):
             balances = await debt_repository.get_debts(chat_id)
             if balances:
                 lines = []

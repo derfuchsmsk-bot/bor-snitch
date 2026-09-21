@@ -323,7 +323,7 @@ class ChatService:
                 verdict_reason = result.reason if isinstance(result, CynicalCommentResult) else None
                 
                 # Debt tracking via spontaneous AI parsing
-                if isinstance(result, CynicalCommentResult) and result.debt_transactions:
+                if getattr(config, "ENABLE_DEBTS", True) and isinstance(result, CynicalCommentResult) and result.debt_transactions:
                     dt_dicts = [dt.model_dump() for dt in result.debt_transactions]
                     await debt_repository.update_debts(chat_id, dt_dicts)
                     
