@@ -159,6 +159,10 @@ def get_admin_html() -> str:
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60 flex items-center gap-1.5">
             <span>⚖️</span> <span>Вердикты</span>
           </button>
+          <button onclick="switchTab('debts')" data-tab="debts"
+                  class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60 flex items-center gap-1.5">
+            <span>💸</span> <span>Долги</span>
+          </button>
           <button onclick="switchTab('lore')" data-tab="lore"
                   class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition text-slate-400 hover:text-white hover:bg-slate-800/60">
             📜 Лор и Факты
@@ -696,6 +700,86 @@ def get_admin_html() -> str:
               <tbody id="verdicts-table-body" class="divide-y divide-slate-800/60 text-slate-300">
                 <tr>
                   <td colspan="7" class="py-8 text-center text-slate-500">Загрузка решений...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: DEBTS & BALANCES ================= -->
+      <section id="tab-content-debts" class="tab-pane hidden space-y-6">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111827] p-5 rounded-2xl border border-slate-800 shadow-xl">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>💸</span> Долговая книга чата (Взаиморасчёты)
+            </h2>
+            <p class="text-xs text-slate-400">Учёт финансовых долгов участников: автоматическая фиксация ботом из диалогов, ручное добавление и погашение</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="loadDebts()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>Обновить</span>
+            </button>
+            <button onclick="openAddDebtModal()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow-lg shadow-emerald-900/30">
+              <span>➕ Записать долг</span>
+            </button>
+            <button onclick="clearAllDebtsPrompt()"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5">
+              <span>🧹 Сбросить все</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-[#111827] border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-slate-400 text-xs font-medium">Активных долгов</div>
+            <div id="debts-stat-count" class="text-2xl font-bold font-mono text-white mt-1">0</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Взаимных обязательств</div>
+          </div>
+          <div class="bg-[#111827] border border-amber-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-amber-400 text-xs font-medium">Сумма всех долгов</div>
+            <div id="debts-stat-total-amount" class="text-2xl font-bold font-mono text-amber-400 mt-1">0 ₽</div>
+            <div class="text-[10px] text-slate-400 mt-0.5">Общий объём задолженностей</div>
+          </div>
+          <div class="bg-[#111827] border border-rose-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-rose-400 text-xs font-medium">Главный должник</div>
+            <div id="debts-stat-top-debtor" class="text-lg font-bold font-mono text-rose-400 mt-1 truncate">—</div>
+            <div id="debts-stat-top-debtor-pts" class="text-[10px] text-slate-400 mt-0.5">0 ₽ долга</div>
+          </div>
+          <div class="bg-[#111827] border border-emerald-900/30 p-4 rounded-xl flex flex-col justify-between">
+            <div class="text-emerald-400 text-xs font-medium">Главный кредитор</div>
+            <div id="debts-stat-top-creditor" class="text-lg font-bold font-mono text-emerald-400 mt-1 truncate">—</div>
+            <div id="debts-stat-top-creditor-pts" class="text-[10px] text-slate-400 mt-0.5">0 ₽ к возврату</div>
+          </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="flex gap-4">
+          <input type="text" id="debts-search-input" oninput="filterDebtsTable()"
+                 placeholder="🔍 Поиск по должнику или кредитору..."
+                 class="w-full sm:max-w-md px-4 py-2.5 bg-[#111827] border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <!-- Debts Table -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-[#162032] text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-3 px-4">Должник (Кто должен)</th>
+                  <th class="py-3 px-4">Кредитор (Кому должен)</th>
+                  <th class="py-3 px-4 text-center">Сумма долга</th>
+                  <th class="py-3 px-4 text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="debts-table-body" class="divide-y divide-slate-800/60 text-slate-300">
+                <tr>
+                  <td colspan="4" class="py-8 text-center text-slate-500">Загрузка долговой книги...</td>
                 </tr>
               </tbody>
             </table>
@@ -1357,6 +1441,98 @@ def get_admin_html() -> str:
     </div>
   </div>
 
+  <!-- MODAL: Add/Edit Debt -->
+  <div id="modal-debt-edit" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 id="modal-debt-title" class="text-base font-bold text-white flex items-center gap-2">
+          <span>💸</span> <span>Записать долг</span>
+        </h3>
+        <button onclick="closeModal('modal-debt-edit')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Должник (Кто должен) *</label>
+          <input type="text" id="modal-debt-debtor" placeholder="Никнейм или имя (например: arsinov или Паштет)"
+                 class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Кредитор (Кому должен) *</label>
+          <input type="text" id="modal-debt-creditor" placeholder="Никнейм или имя (например: elisei или Сеня)"
+                 class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Сумма (₽) *</label>
+          <input type="number" id="modal-debt-amount" min="1" placeholder="500"
+                 class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+        </div>
+        <div class="pt-1">
+          <label class="flex items-center gap-2 cursor-pointer text-slate-400">
+            <input type="checkbox" id="modal-debt-is-delta"
+                   class="rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500">
+            <span>Прибавить к текущему долгу (дельта), а не заменить сумму</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-debt-edit')"
+                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Отмена</button>
+        <button onclick="submitSaveDebt()"
+                class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs shadow-lg transition">
+          Сохранить долг
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Settle Debt (Repay) -->
+  <div id="modal-debt-settle" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>✅</span> <span>Погашение долга</span>
+        </h3>
+        <button onclick="closeModal('modal-debt-settle')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <input type="hidden" id="modal-settle-debtor">
+      <input type="hidden" id="modal-settle-creditor">
+
+      <div class="bg-[#162032] border border-slate-700/60 rounded-xl p-3 text-xs space-y-1.5">
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Должник:</span>
+          <span id="modal-settle-debtor-display" class="font-bold text-rose-400"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Кредитор:</span>
+          <span id="modal-settle-creditor-display" class="font-bold text-emerald-400"></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-slate-400">Текущий остаток долга:</span>
+          <span id="modal-settle-current-amount" class="font-bold font-mono text-amber-400"></span>
+        </div>
+      </div>
+
+      <div class="space-y-2 text-xs">
+        <label class="block font-medium text-slate-300">Сумма возврата (₽) *</label>
+        <input type="number" id="modal-settle-amount" min="1"
+               class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+        <p class="text-[11px] text-slate-500">Если указать полную сумму долга, долг будет закрыт целиком.</p>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeModal('modal-debt-settle')"
+                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Отмена</button>
+        <button onclick="submitSettleDebt()"
+                class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs shadow-lg transition">
+          Подтвердить возврат
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- CLIENT-SIDE LOGIC -->
   <script>
     let state = {
@@ -1373,6 +1549,8 @@ def get_admin_html() -> str:
       verdictsFilterStatus: 'all',
       verdictsSearch: '',
       selectedVerdictForAnnul: null,
+      debts: [],
+      debtsSearch: '',
       lessons: [],
       lessonsFilter: 'all',
       lessonsVerdictFilter: 'all',
@@ -1542,6 +1720,7 @@ def get_admin_html() -> str:
       if (state.activeTab === 'chat') loadChatMessages(true);
       if (state.activeTab === 'users') loadUsers();
       if (state.activeTab === 'verdicts') loadVerdicts();
+      if (state.activeTab === 'debts') loadDebts();
       if (state.activeTab === 'lore') loadFactsAndLore();
       if (state.activeTab === 'agreements') loadAgreements();
       if (state.activeTab === 'lessons') loadLessons();
@@ -1566,6 +1745,7 @@ def get_admin_html() -> str:
       if (tabId === 'prompts') loadPrompts();
       if (tabId === 'users') loadUsers();
       if (tabId === 'verdicts') loadVerdicts();
+      if (tabId === 'debts') loadDebts();
       if (tabId === 'lore') loadFactsAndLore();
       if (tabId === 'agreements') loadAgreements();
       if (tabId === 'lessons') loadLessons();
@@ -2451,6 +2631,210 @@ def get_admin_html() -> str:
       } finally {
         btn.disabled = false;
         btn.innerHTML = oldHtml;
+      }
+    }
+
+    // --- TAB: DEBTS & BALANCES ---
+    async function loadDebts() {
+      if (!state.currentChatId) return;
+      const tbody = document.getElementById('debts-table-body');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-500">Загрузка долговой книги...</td></tr>';
+      try {
+        const data = await apiRequest(`/api/admin/chats/${state.currentChatId}/debts`);
+        state.debts = data.items || [];
+
+        // Update stats
+        const elCount = document.getElementById('debts-stat-count');
+        if (elCount) elCount.innerText = data.debts_count || 0;
+
+        const elAmount = document.getElementById('debts-stat-total-amount');
+        if (elAmount) elAmount.innerText = `${(data.total_debt_amount || 0).toLocaleString('ru-RU')} ₽`;
+
+        const elTopDebtor = document.getElementById('debts-stat-top-debtor');
+        if (elTopDebtor) elTopDebtor.innerText = data.top_debtor ? escapeHtml(data.top_debtor) : '—';
+        const elTopDebtorPts = document.getElementById('debts-stat-top-debtor-pts');
+        if (elTopDebtorPts) elTopDebtorPts.innerText = data.top_debtor ? `${(data.top_debtor_amount || 0).toLocaleString('ru-RU')} ₽ долга` : '0 ₽ долга';
+
+        const elTopCreditor = document.getElementById('debts-stat-top-creditor');
+        if (elTopCreditor) elTopCreditor.innerText = data.top_creditor ? escapeHtml(data.top_creditor) : '—';
+        const elTopCreditorPts = document.getElementById('debts-stat-top-creditor-pts');
+        if (elTopCreditorPts) elTopCreditorPts.innerText = data.top_creditor ? `${(data.top_creditor_amount || 0).toLocaleString('ru-RU')} ₽ к возврату` : '0 ₽ к возврату';
+
+        renderDebtsTable(state.debts);
+      } catch (err) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-rose-400">Ошибка: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function filterDebtsTable() {
+      const q = (document.getElementById('debts-search-input')?.value || '').toLowerCase().trim();
+      const filtered = (state.debts || []).filter(item => {
+        if (!q) return true;
+        return (item.debtor || '').toLowerCase().includes(q) || (item.creditor || '').toLowerCase().includes(q);
+      });
+      renderDebtsTable(filtered);
+    }
+
+    function renderDebtsTable(items) {
+      const tbody = document.getElementById('debts-table-body');
+      if (!tbody) return;
+      if (!items || items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-500">Долгов нет! Все участники чисты.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map(d => {
+        const debtorEsc = escapeHtml(d.debtor);
+        const creditorEsc = escapeHtml(d.creditor);
+        const amount = d.amount || 0;
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-3 px-4 font-semibold text-rose-300 flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-[10px] font-bold">📉</span>
+              <span>${debtorEsc}</span>
+            </td>
+            <td class="py-3 px-4 font-semibold text-emerald-300">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold">💳</span>
+                <span>${creditorEsc}</span>
+              </div>
+            </td>
+            <td class="py-3 px-4 text-center font-mono font-bold text-amber-400 text-sm">
+              ${amount.toLocaleString('ru-RU')} ₽
+            </td>
+            <td class="py-3 px-4 text-right whitespace-nowrap">
+              <div class="flex items-center justify-end gap-1.5">
+                <button onclick="openSettleDebtModal('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}', ${amount})"
+                        class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-semibold transition flex items-center gap-1">
+                  <span>✅</span> <span>Погасить</span>
+                </button>
+                <button onclick="openEditDebtModal('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}', ${amount})"
+                        class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs transition">
+                  ✏️
+                </button>
+                <button onclick="deleteDebtPair('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}')"
+                        class="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs transition" title="Списать без оплаты">
+                  🗑
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function openAddDebtModal() {
+      document.getElementById('modal-debt-title').innerHTML = '<span>➕</span> <span>Записать новый долг</span>';
+      document.getElementById('modal-debt-debtor').value = '';
+      document.getElementById('modal-debt-creditor').value = '';
+      document.getElementById('modal-debt-amount').value = '';
+      document.getElementById('modal-debt-is-delta').checked = false;
+      openModal('modal-debt-edit');
+    }
+
+    function openEditDebtModal(debtor, creditor, amount) {
+      document.getElementById('modal-debt-title').innerHTML = '<span>✏️</span> <span>Изменить долг</span>';
+      document.getElementById('modal-debt-debtor').value = debtor;
+      document.getElementById('modal-debt-creditor').value = creditor;
+      document.getElementById('modal-debt-amount').value = amount;
+      document.getElementById('modal-debt-is-delta').checked = false;
+      openModal('modal-debt-edit');
+    }
+
+    async function submitSaveDebt() {
+      const debtor = document.getElementById('modal-debt-debtor').value.trim();
+      const creditor = document.getElementById('modal-debt-creditor').value.trim();
+      const amount = parseInt(document.getElementById('modal-debt-amount').value, 10);
+      const isDelta = document.getElementById('modal-debt-is-delta').checked;
+
+      if (!debtor || !creditor || isNaN(amount) || amount <= 0) {
+        showToast('Заполните имена должника, кредитора и положительную сумму', 'error');
+        return;
+      }
+      if (debtor.toLowerCase() === creditor.toLowerCase()) {
+        showToast('Должник и кредитор не могут совпадать', 'error');
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts`, {
+          method: 'POST',
+          body: JSON.stringify({
+            debtor: debtor,
+            creditor: creditor,
+            amount: amount,
+            is_delta: isDelta
+          })
+        });
+        closeModal('modal-debt-edit');
+        showToast('Долг успешно зафиксирован!');
+        loadDebts();
+      } catch (err) {
+        showToast('Ошибка сохранения: ' + err.message, 'error');
+      }
+    }
+
+    function openSettleDebtModal(debtor, creditor, currentAmount) {
+      document.getElementById('modal-settle-debtor').value = debtor;
+      document.getElementById('modal-settle-creditor').value = creditor;
+      document.getElementById('modal-settle-debtor-display').innerText = debtor;
+      document.getElementById('modal-settle-creditor-display').innerText = creditor;
+      document.getElementById('modal-settle-current-amount').innerText = `${currentAmount.toLocaleString('ru-RU')} ₽`;
+      document.getElementById('modal-settle-amount').value = currentAmount;
+      openModal('modal-debt-settle');
+    }
+
+    async function submitSettleDebt() {
+      const debtor = document.getElementById('modal-settle-debtor').value;
+      const creditor = document.getElementById('modal-settle-creditor').value;
+      const amount = parseInt(document.getElementById('modal-settle-amount').value, 10);
+
+      if (isNaN(amount) || amount <= 0) {
+        showToast('Укажите сумму возврата', 'error');
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts/settle`, {
+          method: 'POST',
+          body: JSON.stringify({
+            debtor: debtor,
+            creditor: creditor,
+            amount: amount
+          })
+        });
+        closeModal('modal-debt-settle');
+        showToast(`Погашение на сумму ${amount} ₽ успешно зафиксировано!`);
+        loadDebts();
+      } catch (err) {
+        showToast('Ошибка погашения: ' + err.message, 'error');
+      }
+    }
+
+    async function deleteDebtPair(debtor, creditor) {
+      if (!confirm(`Списать долг ${debtor} перед ${creditor}?`)) return;
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts/${encodeURIComponent(debtor)}/${encodeURIComponent(creditor)}`, {
+          method: 'DELETE'
+        });
+        showToast('Долг списан!');
+        loadDebts();
+      } catch (err) {
+        showToast('Ошибка: ' + err.message, 'error');
+      }
+    }
+
+    async function clearAllDebtsPrompt() {
+      if (!confirm('Вы уверены, что хотите сбросить ВСЕ долги в этом чате? Это действие нельзя отменить.')) return;
+      try {
+        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts`, {
+          method: 'DELETE'
+        });
+        showToast('Все долги чата успешно очищены!');
+        loadDebts();
+      } catch (err) {
+        showToast('Ошибка очистки: ' + err.message, 'error');
       }
     }
 

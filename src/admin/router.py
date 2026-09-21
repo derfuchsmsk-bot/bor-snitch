@@ -16,6 +16,7 @@ from src.repositories.message_repository import message_repository
 from src.repositories.fact_repository import fact_repository
 from src.repositories.agreement_repository import agreement_repository
 from src.repositories.lesson_repository import lesson_repository
+from src.repositories.debt_repository import debt_repository
 from src.services.learning import LearningService
 from src.services.db import db, apply_weekly_amnesty
 from google.cloud import firestore
@@ -115,6 +116,17 @@ class AnnulVerdictRequest(BaseModel):
     reason: Optional[str] = "Аннулировано через панель администратора"
     learn_lesson: Optional[bool] = True
     custom_rule: Optional[str] = None
+
+class DebtCreateUpdateRequest(BaseModel):
+    debtor: str = Field(..., min_length=1)
+    creditor: str = Field(..., min_length=1)
+    amount: int = Field(..., ge=1, le=10000000)
+    is_delta: Optional[bool] = False
+
+class DebtSettleRequest(BaseModel):
+    debtor: str = Field(..., min_length=1)
+    creditor: str = Field(..., min_length=1)
+    amount: Optional[int] = None
 
 class AchievementsUpdateRequest(BaseModel):
     achievements: List[Any]
@@ -699,6 +711,116 @@ async def delete_agreement(chat_id: str, agreement_id: str, admin=Depends(get_cu
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete agreement")
     return {"status": "deleted", "agreement_id": agreement_id}
+
+
+# --- Debts Endpoints ---
+
+@router.get("/api/admin/chats/{chat_id}/debts")
+async def get_chat_debts(chat_id: str, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    summary = await debt_repository.get_debts_summary(c_id)
+    return {
+        "chat_id": chat_id,
+        **summary
+    }
+
+
+@router.post("/api/admin/chats/{chat_id}/debts")
+async def create_or_update_debt(chat_id: str, body: DebtCreateUpdateRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    debtor = body.debtor.strip().lstrip('@')
+    creditor = body.creditor.strip().lstrip('@')
+
+    if debtor.lower() == creditor.lower():
+        raise HTTPException(status_code=400, detail="Должник и кредитор не могут совпадать")
+
+    if body.is_delta:
+        await debt_repository.update_debts(c_id, [{
+            "debtor": debtor,
+            "creditor": creditor,
+            "amount": body.amount,
+            "is_settled": False
+        }])
+    else:
+        await debt_repository.set_debt(c_id, debtor, creditor, body.amount)
+
+    summary = await debt_repository.get_debts_summary(c_id)
+    return {
+        "status": "updated",
+        "chat_id": chat_id,
+        "debtor": debtor,
+        "creditor": creditor,
+        "amount": body.amount,
+        **summary
+    }
+
+
+@router.post("/api/admin/chats/{chat_id}/debts/settle")
+async def settle_debt(chat_id: str, body: DebtSettleRequest, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    debtor = body.debtor.strip().lstrip('@')
+    creditor = body.creditor.strip().lstrip('@')
+
+    if body.amount is not None and body.amount > 0:
+        await debt_repository.update_debts(c_id, [{
+            "debtor": debtor,
+            "creditor": creditor,
+            "amount": body.amount,
+            "is_settled": True
+        }])
+    else:
+        await debt_repository.delete_debt(c_id, debtor, creditor)
+
+    summary = await debt_repository.get_debts_summary(c_id)
+    return {
+        "status": "settled",
+        "chat_id": chat_id,
+        "debtor": debtor,
+        "creditor": creditor,
+        **summary
+    }
+
+
+@router.delete("/api/admin/chats/{chat_id}/debts/{debtor}/{creditor}")
+async def delete_debt_pair(chat_id: str, debtor: str, creditor: str, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    await debt_repository.delete_debt(c_id, debtor, creditor)
+    summary = await debt_repository.get_debts_summary(c_id)
+    return {
+        "status": "deleted",
+        "chat_id": chat_id,
+        **summary
+    }
+
+
+@router.delete("/api/admin/chats/{chat_id}/debts")
+async def clear_all_chat_debts(chat_id: str, admin=Depends(get_current_admin)):
+    try:
+        c_id = int(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+
+    await debt_repository.clear_all_debts(c_id)
+    return {
+        "status": "cleared",
+        "chat_id": chat_id
+    }
 
 
 # --- Lessons & Self-Learning Endpoints ---

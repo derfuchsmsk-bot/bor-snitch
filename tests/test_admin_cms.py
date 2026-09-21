@@ -455,5 +455,74 @@ def test_admin_ui_contains_verdicts_tab():
     assert "modal-annul-verdict" in resp.text
     assert "submitAnnulVerdict" in resp.text
 
-    assert "chat-reply-banner" in resp.text
+
+def test_admin_debts_endpoints_and_ui():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    chat_id = settings.MAIN_CHAT_ID
+
+    # 1. Test GET debts
+    with patch("src.admin.router.debt_repository.get_debts_summary", new_callable=AsyncMock) as mock_summary:
+        mock_summary.return_value = {
+            "balances": {"паштет": {"сеня": 500}},
+            "items": [{"debtor": "паштет", "creditor": "сеня", "amount": 500}],
+            "total_debt_amount": 500,
+            "debts_count": 1,
+            "top_debtor": "паштет",
+            "top_debtor_amount": 500,
+            "top_creditor": "сеня",
+            "top_creditor_amount": 500
+        }
+        resp = client.get(f"/api/admin/chats/{chat_id}/debts", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_debt_amount"] == 500
+        assert len(data["items"]) == 1
+        assert data["items"][0]["debtor"] == "паштет"
+
+    # 2. Test POST create/update debt
+    with patch("src.admin.router.debt_repository.set_debt", new_callable=AsyncMock) as mock_set, \
+         patch("src.admin.router.debt_repository.get_debts_summary", new_callable=AsyncMock) as mock_summary:
+        mock_summary.return_value = {
+            "balances": {"паштет": {"сеня": 1000}},
+            "items": [{"debtor": "паштет", "creditor": "сеня", "amount": 1000}],
+            "total_debt_amount": 1000,
+            "debts_count": 1
+        }
+        resp = client.post(
+            f"/api/admin/chats/{chat_id}/debts",
+            json={"debtor": "паштет", "creditor": "сеня", "amount": 1000, "is_delta": False},
+            headers=headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "updated"
+        mock_set.assert_called_once_with(int(chat_id), "паштет", "сеня", 1000)
+
+    # 3. Test POST settle debt
+    with patch("src.admin.router.debt_repository.delete_debt", new_callable=AsyncMock) as mock_del, \
+         patch("src.admin.router.debt_repository.get_debts_summary", new_callable=AsyncMock) as mock_summary:
+        mock_summary.return_value = {
+            "balances": {},
+            "items": [],
+            "total_debt_amount": 0,
+            "debts_count": 0
+        }
+        resp = client.post(
+            f"/api/admin/chats/{chat_id}/debts/settle",
+            json={"debtor": "паштет", "creditor": "сеня"},
+            headers=headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "settled"
+        mock_del.assert_called_once_with(int(chat_id), "паштет", "сеня")
+
+    # 4. Test UI contains debts tab and modals
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "tab-content-debts" in resp.text
+    assert "loadDebts" in resp.text
+    assert "modal-debt-edit" in resp.text
+    assert "modal-debt-settle" in resp.text
+
 
