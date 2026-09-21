@@ -7,6 +7,7 @@ from src.main import app
 from src.utils.config import settings
 from src.services.learning import LearningService
 from src.services.prompt_service import PromptService
+from src.utils.prompts import get_system_prompt
 from src.repositories.lesson_repository import LessonRepository, lesson_repository
 from src.models.ai import FeedbackAnalysisResult
 from src.admin.auth import create_admin_token
@@ -132,7 +133,7 @@ async def test_lesson_repository_sorting_and_active_rules():
 @pytest.mark.anyio
 async def test_prompt_service_lessons_formatting():
     # Prompt formatting with lessons
-    prompt_with_lessons = PromptService.format_system_prompt(
+    prompt_with_lessons = get_system_prompt(
         lore_json="{}",
         verified_facts="",
         current_context="",
@@ -144,7 +145,7 @@ async def test_prompt_service_lessons_formatting():
     assert "None" not in prompt_with_lessons
 
     # Prompt formatting without lessons
-    prompt_no_lessons = PromptService.format_system_prompt(
+    prompt_no_lessons = get_system_prompt(
         lore_json="{}",
         verified_facts="",
         current_context="",

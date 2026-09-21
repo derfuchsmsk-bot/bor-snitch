@@ -1,89 +1,19 @@
-from copy import deepcopy
+import json
 import math
+import os
+from copy import deepcopy
 
-DEFAULT_CONFIG_VALUES = {
-    # Global Bot State
-    "BOT_DISABLED": False,
-    "ACCOUNTING_EPOCH_DATE": "2026-09-15",
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "defaults.json")
 
-    # Points
-    "POINTS_WHINING": 0,
-    "POINTS_STIFFNESS": 0,
-    "POINTS_TOXICITY": 25,
-    "POINTS_SNITCHING": 50,
-    "POINTS_AFK_BASE": 50,
-    "POINTS_AFK_DAILY": 50,
+def load_default_config():
+    try:
+        with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Failed to load defaults.json: {e}")
+        return {}
 
-    # Gambling
-    "GAMBLE_WIN_CHANCE": 0.50,
-    "GAMBLE_WIN_POINTS": 50,
-    "GAMBLE_LOSS_POINTS": 60,
-
-    # False Reports
-    "FALSE_REPORT_LIMIT": 3,
-    "FALSE_REPORT_PENALTY": 15,
-
-    # Rules
-    "IGNORE_DAYS_BEFORE_PENALTY": 2,
-
-    # Random Cynical Comments
-    "CYNICAL_COMMENT_CHANCE": 0.002,
-    "CYNICAL_COMMENT_COOLDOWN_SECONDS": 180,
-
-    # Automatic Emoji Reactions
-    "REACTIONS_ENABLED": True,
-    "REACTION_CHANCE": 0.02,
-    "REACTION_COOLDOWN_SECONDS": 120,
-    "REACTION_ALLOWED_EMOJIS": ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"],
-
-    # Voice Digest (Daily audio reports via Gemini 3.1 Flash TTS / ElevenLabs)
-    "VOICE_DIGEST_ENABLED": True,
-    "VOICE_DIGEST_TIME_1": "14:00",
-    "VOICE_DIGEST_TIME_2": "22:00",
-    "TTS_PROVIDER": "gemini",
-    "GOOGLE_TTS_MODEL": "gemini-3.1-flash-tts-preview",
-    "GOOGLE_TTS_VOICE": "Sadaltager",
-    "GOOGLE_TTS_STYLE": "Read aloud in an authoritative, calm, slightly sarcastic tone with dry humor, like an observant prison cell boss.",
-    "ELEVENLABS_VOICE_ID": "pNInz6obpgDQGcFmaJgB",
-    "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
-    "ELEVENLABS_STABILITY": 0.45,
-    "ELEVENLABS_SIMILARITY_BOOST": 0.85,
-    "VOICE_DIGEST_VOICE": "ru-RU-Wavenet-D",
-    "VOICE_DIGEST_PITCH": -1.5,
-    "VOICE_DIGEST_SPEED": 1.05,
-
-    # Ranks (serialized as lists, second value None = inf)
-    "RANK_NORMAL": [0, 49],
-    "RANK_SHNYR": [50, 249],
-    "RANK_GOAT": [250, 499],
-    "RANK_OFFENDED": [500, 999],
-    "RANK_PIERCED": [1000, None],
-
-    # Context & Limits
-    "REPORT_CONTEXT_LIMIT": 40,
-    "REPORT_NEXT_CONTEXT_LIMIT": 10,
-    "MENTION_CHUNK_SIZE": 50,
-    "SPONTANEOUS_JUDGMENT_ENABLED": True,
-    "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS": 180,
-
-    # Agreements
-    "ENABLE_AGREEMENTS": False,
-    "AGREEMENT_DISPUTE_WINDOW_MINUTES": 15,
-    "AGREEMENT_DEFAULT_LIFESPAN_HOURS": 24,
-
-    # Time & Analysis
-    "TIMEZONE_OFFSET": 3,
-    "ANALYSIS_CUTOFF_HOUR": 4,
-    "SESSION_TIMEOUT_HOURS": 3,
-
-    # Debts
-    "ENABLE_DEBTS": True,
-
-    # AI Models
-    "AI_MODEL_ANALYSIS": "gemini-3.8-flash",
-    "AI_MODEL_MULTIMODAL": "gemini-3.8-flash",
-}
-
+DEFAULT_CONFIG_VALUES = load_default_config()
 
 class GameConfig:
     def __init__(self):
@@ -137,6 +67,5 @@ class GameConfig:
                 setattr(self, key, str(val).strip())
             else:
                 setattr(self, key, val)
-
 
 config = GameConfig()

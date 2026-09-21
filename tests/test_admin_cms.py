@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from src.main import app
 from src.utils.config import settings
 from src.utils.game_config import config, DEFAULT_CONFIG_VALUES
-from src.services.prompt_service import PromptService, safe_substitute
+from src.services.prompt_service import PromptService
 from src.admin.auth import verify_admin_password, create_admin_token, decode_admin_token, COOKIE_NAME
 
 
@@ -40,17 +40,6 @@ def test_game_config_defaults_and_updates():
     assert config.BOT_DISABLED is False
 
 
-def test_safe_substitute():
-    tmpl = "Hello {name}, your score is {score}! Keep {char} safe."
-    res = safe_substitute(tmpl, {"name": "Alice", "score": 100, "char": "{"})
-    assert res == "Hello Alice, your score is 100! Keep { safe."
-
-    # Unknown braces should remain untouched without raising KeyError
-    tmpl_unknown = "Some {unknown_var} test."
-    res_unknown = safe_substitute(tmpl_unknown, {"other": "val"})
-    assert res_unknown == "Some {unknown_var} test."
-
-
 def test_prompt_service_formatting_and_reset():
     PromptService.reset_to_defaults = MagicMock()
     prompts_info = PromptService.get_all_prompts_info()
@@ -60,7 +49,8 @@ def test_prompt_service_formatting_and_reset():
     sys_prompt = PromptService.format_system_prompt(
         lore_json="{}",
         verified_facts="Fact 1",
-        current_context="Context 1"
+        current_context="Context 1",
+        lessons_str=""
     )
     assert "Снитч-бот" in sys_prompt
     assert "Fact 1" in sys_prompt

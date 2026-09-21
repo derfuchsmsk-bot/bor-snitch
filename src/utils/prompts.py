@@ -1,13 +1,23 @@
-from ..services.prompt_service import PromptService, safe_substitute
+from ..services.prompt_service import PromptService
 from .game_config import config
 
 # Backwards compatibility functions and proxies:
-def get_system_prompt(lore_json: str, verified_facts: str = "", current_context: str = "", lessons: list = None) -> str:
+def get_system_prompt(lore_json: str, verified_facts: str = "", current_context: str = "", lessons: list = None, active_agreements: str = "") -> str:
+    lessons_str = ""
+    if lessons:
+        clean_lessons = [str(l).strip() for l in lessons if l and str(l).strip()]
+        if clean_lessons:
+            lessons_str = "\n<learned_lessons>\n"
+            for i, lesson in enumerate(clean_lessons, 1):
+                lessons_str += f"{i}. {lesson}\n"
+            lessons_str += "</learned_lessons>\n"
+
     return PromptService.format_system_prompt(
         lore_json=lore_json,
         verified_facts=verified_facts,
         current_context=current_context,
-        lessons=lessons
+        lessons_str=lessons_str,
+        active_agreements=active_agreements
     )
 
 def get_report_validation_prompt(lore_json: str = "{}", active_agreements: str = "") -> str:
