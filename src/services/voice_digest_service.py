@@ -77,9 +77,9 @@ class VoiceDigestService:
         prompt = get_voice_digest_prompt(
             edition_type=edition_type,
             lore_json=lore_json,
-            active_agreements=agreements_text,
-            offenders_summary=offenders_text,
-            current_context=context_str
+            active_agreements=agreements_str,
+            offenders_summary=offenders_summary,
+            current_context=logs_summary
         )
         
         moscow_tz = timezone(timedelta(hours=config.TIMEZONE_OFFSET))
