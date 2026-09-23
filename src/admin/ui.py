@@ -1065,6 +1065,33 @@ def get_admin_html() -> str:
               <span>Запустить анализ</span>
             </button>
           </div>
+          <!-- Action: Thought to Channel -->
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div class="text-2xl mb-2">🧠</div>
+              <h3 class="text-sm font-bold text-white">Мысль в канал</h3>
+              <p class="text-xs text-slate-400 mt-1">Генерирует мысль и отправляет её в дополнительный канал (если он настроен).</p>
+            </div>
+            <button onclick="runChannelThoughtAction()" id="btn-action-channel-thought"
+                    class="w-full py-2.5 px-4 bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-fuchsia-900/30">
+              <span>Сгенерировать</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Channel Messaging Action -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4 mt-6">
+            <div>
+              <div class="text-xl mb-1">📢</div>
+              <h3 class="text-sm font-bold text-white">Отправить сообщение в канал</h3>
+              <p class="text-xs text-slate-400 mt-1">Отправить произвольный текст от лица бота в дополнительный канал.</p>
+            </div>
+            <div class="flex gap-2">
+                <textarea id="channel-message-text" rows="2" class="flex-1 px-3 py-2 bg-[#1a2333] border border-slate-700 focus:border-emerald-500 rounded-xl text-sm text-white resize-none" placeholder="Текст сообщения..."></textarea>
+                <button onclick="sendChannelMessageAction()" id="btn-action-channel-msg" class="py-2 px-6 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition self-end h-[60px]">
+                    Отправить
+                </button>
+            </div>
         </div>
 
         <!-- Live Output Log Console -->
@@ -3383,6 +3410,57 @@ def get_admin_html() -> str:
       } finally {
         if (btn1) { btn1.disabled = false; btn1.textContent = '🔍 Просканировать за неделю'; }
         if (btn2) { btn2.disabled = false; btn2.textContent = 'Просканировать за неделю'; }
+      }
+    }
+
+    async function runChannelThoughtAction() {
+      if (!confirm(`Сгенерировать и отправить мысль в дополнительный канал?`)) return;
+      appendConsole(`Генерация мысли для канала (на основе контекста чата ${state.currentChatId})...`);
+      const btn = document.getElementById('btn-action-channel-thought');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Загрузка...</span>';
+      try {
+        const res = await apiRequest('/api/admin/actions/channel_thought', {
+          method: 'POST',
+          body: JSON.stringify({ chat_id: state.currentChatId })
+        });
+        appendConsole(`Мысль отправлена в канал!\\nТекст: ${res.result?.text}`);
+        showToast('Мысль отправлена в канал!');
+      } catch (err) {
+        appendConsole(`ОШИБКА отправки мысли: ${err.message}`);
+        showToast('Ошибка: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Сгенерировать</span>';
+      }
+    }
+
+    async function sendChannelMessageAction() {
+      const input = document.getElementById('channel-message-text');
+      const text = input.value.trim();
+      if (!text) {
+        showToast('Введите текст сообщения', 'error');
+        return;
+      }
+      if (!confirm(`Отправить это сообщение в дополнительный канал от лица бота?`)) return;
+      appendConsole(`Отправка ручного сообщения в канал...`);
+      const btn = document.getElementById('btn-action-channel-msg');
+      btn.disabled = true;
+      btn.innerText = 'Отправка...';
+      try {
+        const res = await apiRequest('/api/admin/actions/channel_message', {
+          method: 'POST',
+          body: JSON.stringify({ chat_id: state.currentChatId, text: text })
+        });
+        appendConsole(`Сообщение отправлено в канал!`);
+        showToast('Сообщение отправлено!');
+        input.value = '';
+      } catch (err) {
+        appendConsole(`ОШИБКА отправки сообщения: ${err.message}`);
+        showToast('Ошибка: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Отправить';
       }
     }
 

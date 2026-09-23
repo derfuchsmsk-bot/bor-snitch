@@ -147,6 +147,64 @@ async def scheduled_voice_digest(edition_type: str):
     except Exception as e:
         logging.error(f"Error in scheduled voice digest: {e}")
 
+async def scheduled_thought():
+    from src.utils.game_config import config
+    from src.utils.config import settings
+    if config.BOT_DISABLED or not getattr(config, "THOUGHTS_ENABLED", True):
+        logging.info("Skipping scheduled thought because bot or feature is disabled.")
+        return
+
+    logging.info("Starting scheduled thought generation...")
+    from src.services.thought_service import ThoughtService
+    try:
+        source_chat_id = settings.MAIN_CHAT_ID
+        target_chat_id = getattr(settings, "CHANNEL_ID", None) or source_chat_id
+        await ThoughtService.create_and_send_thought(
+            source_chat_id=source_chat_id,
+            target_chat_id=target_chat_id,
+            bot=bot
+        )
+    except Exception as e:
+        logging.error(f"Error in scheduled thought generation: {e}")
+
+def sync_thoughts_jobs():
+    """Dynamically schedules or removes daily textual thoughts based on GameConfig."""
+    try:
+        job_ids = ["thought_1", "thought_2", "thought_3", "thought_4", "thought_5"]
+        if not getattr(config, "THOUGHTS_ENABLED", True) or config.BOT_DISABLED:
+            for job_id in job_ids:
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+            logging.info("Thoughts jobs unscheduled.")
+            return
+
+        times = [
+            getattr(config, f"THOUGHTS_TIME_{i}", None) for i in range(1, 6)
+        ]
+        
+        for i, t_str in enumerate(times, 1):
+            job_id = f"thought_{i}"
+            if not t_str:
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+                continue
+
+            h, m = [int(x) for x in t_str.split(":")[:2]]
+            utc_h = (h - getattr(config, "TIMEZONE_OFFSET", 3)) % 24
+
+            scheduler.add_job(
+                scheduled_thought,
+                'cron',
+                hour=utc_h,
+                minute=m,
+                id=job_id,
+                replace_existing=True
+            )
+            logging.info(f"Scheduled thought_{i}: {t_str} MSK (UTC {utc_h:02d}:{m:02d})")
+            
+    except Exception as e:
+        logging.error(f"Failed to sync thoughts jobs: {e}")
+
 def sync_voice_digest_jobs():
     """Dynamically schedules or removes daily voice digest cron jobs based on GameConfig."""
     try:
@@ -230,6 +288,9 @@ async def on_startup():
 
     # Synchronize voice digest jobs
     sync_voice_digest_jobs()
+    
+    # Synchronize thoughts jobs
+    sync_thoughts_jobs()
     
     scheduler.add_job(scheduled_weekly_decay, 'cron', day_of_week='sun', hour=23, minute=59)
     scheduler.add_job(scheduled_lore_evolution, 'cron', day_of_week='mon', hour=0, minute=30)

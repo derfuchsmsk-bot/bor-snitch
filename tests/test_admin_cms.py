@@ -526,3 +526,38 @@ def test_admin_debts_endpoints_and_ui():
     assert "modal-debt-settle" in resp.text
 
 
+def test_admin_channel_thought_and_message_actions():
+    token = create_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("src.services.thought_service.ThoughtService.create_and_send_thought", new_callable=AsyncMock) as mock_thought, \
+         patch("src.main.bot.send_message", new_callable=AsyncMock) as mock_send:
+
+        mock_thought.return_value = {"status": "success", "text": "Жизнь коротка, двигайтесь по-людски."}
+        mock_msg = MagicMock()
+        mock_msg.message_id = 1234
+        mock_send.return_value = mock_msg
+
+        # 1. POST channel_thought
+        resp = client.post(
+            "/api/admin/actions/channel_thought",
+            json={"chat_id": str(settings.MAIN_CHAT_ID)},
+            headers=headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+        mock_thought.assert_called_once()
+
+        # 2. POST channel_message
+        resp_msg = client.post(
+            "/api/admin/actions/channel_message",
+            json={"chat_id": str(settings.MAIN_CHAT_ID), "text": "Привет от админа в канал!"},
+            headers=headers
+        )
+        assert resp_msg.status_code == 200
+        assert resp_msg.json()["status"] == "success"
+        assert resp_msg.json()["message_id"] == 1234
+        mock_send.assert_called_once()
+
+
+

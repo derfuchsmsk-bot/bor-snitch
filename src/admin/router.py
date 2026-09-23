@@ -72,6 +72,12 @@ class ConfigUpdateRequest(BaseModel):
     VOICE_DIGEST_ENABLED: Optional[bool] = None
     VOICE_DIGEST_TIME_1: Optional[str] = None
     VOICE_DIGEST_TIME_2: Optional[str] = None
+    THOUGHTS_ENABLED: Optional[bool] = None
+    THOUGHTS_TIME_1: Optional[str] = None
+    THOUGHTS_TIME_2: Optional[str] = None
+    THOUGHTS_TIME_3: Optional[str] = None
+    THOUGHTS_TIME_4: Optional[str] = None
+    THOUGHTS_TIME_5: Optional[str] = None
     TTS_PROVIDER: Optional[str] = None
     ELEVENLABS_VOICE_ID: Optional[str] = None
     ELEVENLABS_MODEL_ID: Optional[str] = None
@@ -178,6 +184,13 @@ class VoiceDigestActionRequest(BaseModel):
     edition_type: Optional[str] = "Дневной выпуск (14:00)"
     send_telegram: Optional[bool] = True
 
+class ChannelThoughtActionRequest(BaseModel):
+    chat_id: str
+
+class ChannelMessageActionRequest(BaseModel):
+    chat_id: str
+    text: str
+
 
 # --- Auth Endpoints ---
 
@@ -241,6 +254,13 @@ async def update_config(body: ConfigUpdateRequest, admin=Depends(get_current_adm
             sync_voice_digest_jobs()
         except Exception as e:
             logger.debug(f"Could not sync voice digest jobs: {e}")
+            
+    if any(k.startswith("THOUGHTS_") for k in updates) or "BOT_DISABLED" in updates:
+        try:
+            from src.main import sync_thoughts_jobs
+            sync_thoughts_jobs()
+        except Exception as e:
+            logger.debug(f"Could not sync thoughts jobs: {e}")
     return {
         "status": "updated",
         "config": saved_config
@@ -387,9 +407,13 @@ async def adjust_user_points(chat_id: str, user_id: str, body: PointsAdjustReque
     """Adjusts points delta or sets exact points for a user."""
     try:
         c_id = int(chat_id)
+    except ValueError:
+        c_id = chat_id
+        
+    try:
         u_id = int(user_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id or user_id format")
+        raise HTTPException(status_code=400, detail="Invalid user_id format")
 
     if body.exact_points is not None:
         res = await user_repository.set_user_points(c_id, u_id, body.exact_points)
@@ -425,9 +449,13 @@ async def update_user_achievements(chat_id: str, user_id: str, body: Achievement
     """Replaces or updates achievements list for a user."""
     try:
         c_id = int(chat_id)
+    except ValueError:
+        c_id = chat_id
+        
+    try:
         u_id = int(user_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id or user_id format")
+        raise HTTPException(status_code=400, detail="Invalid user_id format")
 
     achievements = await user_repository.update_user_achievements(c_id, u_id, body.achievements)
     return {
@@ -441,9 +469,13 @@ async def reset_user_false_reports(chat_id: str, user_id: str, admin=Depends(get
     """Resets the false report strike counter for a user to 0."""
     try:
         c_id = int(chat_id)
+    except ValueError:
+        c_id = chat_id
+
+    try:
         u_id = int(user_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id or user_id format")
+        raise HTTPException(status_code=400, detail="Invalid user_id format")
 
     await user_repository.reset_false_report_count(c_id, u_id)
     return {
@@ -460,7 +492,7 @@ async def get_chat_messages(chat_id: str, limit: int = 50, admin=Depends(get_cur
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     messages = await message_repository.get_latest_chat_messages(c_id, limit=min(limit, 100))
     serialized = []
@@ -485,7 +517,7 @@ async def send_chat_message(chat_id: str, body: ChatSendMessageRequest, admin=De
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     try:
         kwargs = {"chat_id": c_id, "text": body.text}
@@ -524,7 +556,7 @@ async def get_points_ledger(
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     events = await user_repository.get_points_ledger(
         c_id,
@@ -554,7 +586,7 @@ async def annul_points_verdict(
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     res = await user_repository.annul_point_event(
         c_id,
@@ -594,7 +626,7 @@ async def revert_points_event(chat_id: str, event_id: str, admin=Depends(get_cur
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     res = await user_repository.annul_point_event(c_id, event_id, reason="Удалено через админ-панель")
     if not res.get("success"):
@@ -609,7 +641,7 @@ async def get_lore(chat_id: str, admin=Depends(get_current_admin)):
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     lore = await LoreService.get_lore(c_id)
     return {"chat_id": chat_id, "lore": lore}
@@ -620,7 +652,7 @@ async def update_lore(chat_id: str, body: Dict[str, Any], admin=Depends(get_curr
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     lore_data = body.get("lore", body)
     await LoreService.update_lore(c_id, lore_data, generated_by="admin_cms")
@@ -632,7 +664,7 @@ async def list_facts(chat_id: str, admin=Depends(get_current_admin)):
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     facts = await fact_repository.get_facts(c_id)
     return {"chat_id": chat_id, "facts": facts}
@@ -643,7 +675,7 @@ async def add_fact(chat_id: str, body: FactCreateRequest, admin=Depends(get_curr
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     data = {
         "text": body.text.strip(),
@@ -667,7 +699,7 @@ async def delete_fact(chat_id: str, fact_id: str, admin=Depends(get_current_admi
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     success = await fact_repository.delete_fact(c_id, fact_id)
     if not success:
@@ -683,7 +715,7 @@ async def list_agreements(chat_id: str, admin=Depends(get_current_admin)):
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     agreements = await agreement_repository.get_all_agreements(c_id)
     return {"chat_id": chat_id, "agreements": agreements}
@@ -694,7 +726,7 @@ async def update_agreement_status(chat_id: str, agreement_id: str, body: Agreeme
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     await agreement_repository.update_agreement(c_id, agreement_id, {"status": body.status})
     return {"status": "updated", "agreement_id": agreement_id, "new_status": body.status}
@@ -705,7 +737,7 @@ async def delete_agreement(chat_id: str, agreement_id: str, admin=Depends(get_cu
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     success = await agreement_repository.delete_agreement(c_id, agreement_id)
     if not success:
@@ -720,7 +752,7 @@ async def get_chat_debts(chat_id: str, admin=Depends(get_current_admin)):
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     summary = await debt_repository.get_debts_summary(c_id)
     return {
@@ -734,7 +766,7 @@ async def create_or_update_debt(chat_id: str, body: DebtCreateUpdateRequest, adm
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     debtor = body.debtor.strip().lstrip('@')
     creditor = body.creditor.strip().lstrip('@')
@@ -768,7 +800,7 @@ async def settle_debt(chat_id: str, body: DebtSettleRequest, admin=Depends(get_c
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     debtor = body.debtor.strip().lstrip('@')
     creditor = body.creditor.strip().lstrip('@')
@@ -798,7 +830,7 @@ async def delete_debt_pair(chat_id: str, debtor: str, creditor: str, admin=Depen
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     await debt_repository.delete_debt(c_id, debtor, creditor)
     summary = await debt_repository.get_debts_summary(c_id)
@@ -814,7 +846,7 @@ async def clear_all_chat_debts(chat_id: str, admin=Depends(get_current_admin)):
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     await debt_repository.clear_all_debts(c_id)
     return {
@@ -830,7 +862,7 @@ async def list_lessons(chat_id: str, status: Optional[str] = None, admin=Depends
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     lessons = await lesson_repository.get_lessons(c_id, status=status)
     return {"chat_id": chat_id, "lessons": lessons}
@@ -841,7 +873,7 @@ async def add_lesson(chat_id: str, body: LessonCreateRequest, admin=Depends(get_
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     rule_clean = body.learned_rule.strip()
     if not rule_clean:
@@ -864,7 +896,7 @@ async def update_lesson(chat_id: str, lesson_id: str, body: LessonUpdateRequest,
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "learned_rule" in updates:
@@ -883,7 +915,7 @@ async def update_lesson_status(chat_id: str, lesson_id: str, body: LessonStatusR
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     success = await lesson_repository.set_lesson_status(c_id, lesson_id, body.status)
     if not success:
@@ -896,7 +928,7 @@ async def delete_lesson(chat_id: str, lesson_id: str, admin=Depends(get_current_
     try:
         c_id = int(chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = chat_id
 
     success = await lesson_repository.delete_lesson(c_id, lesson_id)
     if not success:
@@ -1000,6 +1032,46 @@ async def action_lore_evolution(body: ActionChatRequest, admin=Depends(get_curre
         raise HTTPException(status_code=500, detail=f"Ошибка эволюции лора: {str(e)}")
 
 
+@router.post("/api/admin/actions/channel_thought")
+async def action_channel_thought(body: ChannelThoughtActionRequest, admin=Depends(get_current_admin)):
+    from src.main import bot
+    from src.services.thought_service import ThoughtService
+    from src.utils.config import settings
+    try:
+        c_id = int(body.chat_id)
+    except (ValueError, TypeError):
+        c_id = body.chat_id
+        
+    try:
+        source_chat_id = c_id or settings.MAIN_CHAT_ID
+        target_channel = getattr(settings, 'CHANNEL_ID', None) or source_chat_id
+        res = await ThoughtService.create_and_send_thought(
+            source_chat_id=source_chat_id,
+            target_chat_id=target_channel,
+            bot=bot
+        )
+        return {"status": "success", "result": res}
+    except Exception as e:
+        logger.error(f"Channel thought generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации мысли в канал: {str(e)}")
+
+
+@router.post("/api/admin/actions/channel_message")
+async def action_channel_message(body: ChannelMessageActionRequest, admin=Depends(get_current_admin)):
+    from src.main import bot
+    from src.utils.config import settings
+    try:
+        target_channel = getattr(settings, 'CHANNEL_ID', None) or body.chat_id
+        if not target_channel:
+            raise ValueError("CHANNEL_ID не настроен в .env")
+            
+        res = await bot.send_message(chat_id=target_channel, text=body.text)
+        return {"status": "success", "message_id": res.message_id}
+    except Exception as e:
+        logger.error(f"Channel message sending failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки сообщения в канал: {str(e)}")
+
+
 @router.post("/api/admin/actions/voice_digest")
 async def action_voice_digest(body: VoiceDigestActionRequest, admin=Depends(get_current_admin)):
     from src.main import bot
@@ -1022,7 +1094,7 @@ async def action_analyze_feedback(body: AnalyzeFeedbackActionRequest, admin=Depe
     try:
         c_id = int(body.chat_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chat_id format")
+        c_id = body.chat_id
 
     try:
         result = await LearningService.analyze_feedback(c_id, body.date_key)

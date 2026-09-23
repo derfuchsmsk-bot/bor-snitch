@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-in-production"
     LORE_BUCKET_NAME: str | None = None
     MAIN_CHAT_ID: int = -1003893798466
+    CHANNEL_ID: str | None = None
     ADMIN_PASSWORD: str = ""
     ELEVENLABS_API_KEY: str = ""
     TELEGRAM_API_ID: int | None = None

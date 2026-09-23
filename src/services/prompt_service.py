@@ -242,6 +242,22 @@ class PromptService:
         return cls.get_template("feedback_analysis_prompt")
 
     @classmethod
+    def format_scheduled_thought_prompt(
+        cls,
+        lore_json: str = "{}",
+        current_context: str = ""
+    ) -> str:
+        template = cls.get_template("scheduled_thought_prompt")
+        try:
+            return SafeTemplate(template).safe_substitute(
+                lore_json=lore_json,
+                current_context=current_context
+            )
+        except Exception as e:
+            logger.error(f"Error formatting scheduled_thought_prompt: {e}")
+            return template
+
+    @classmethod
     def format_voice_digest_prompt(
         cls,
         edition_type: str,
