@@ -428,6 +428,30 @@ async def voice_digest_endpoint(request: Request, auth=Depends(verify_jwt)):
         logging.error(f"Voice digest error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/thought")
+async def thought_endpoint(request: Request, auth=Depends(verify_jwt)):
+    """
+    Эндпоинт для запуска генерации мысли из Google Cloud Scheduler или вручную.
+    """
+    data = {}
+    try:
+        data = await request.json()
+    except Exception:
+        pass
+    from src.services.thought_service import ThoughtService
+    source_chat_id = data.get("source_chat_id") or settings.MAIN_CHAT_ID
+    target_chat_id = data.get("target_chat_id") or getattr(settings, "CHANNEL_ID", None) or source_chat_id
+    try:
+        result = await ThoughtService.create_and_send_thought(
+            source_chat_id=source_chat_id,
+            target_chat_id=target_chat_id,
+            bot=bot
+        )
+        return result
+    except Exception as e:
+        logging.error(f"Thought generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/token")
 @limiter.limit("5/minute")
 async def get_token(request: Request, x_secret_token: str = Header(None, alias="X-Secret-Token")):
