@@ -74,6 +74,10 @@ class ThoughtService:
             else:
                 raw_text = raw_text + "."
 
+        if raw_text:
+            year = datetime.now().year
+            raw_text = f"{raw_text}\n\n— Снитч-бот, {year}г."
+
         return raw_text
 
     @classmethod

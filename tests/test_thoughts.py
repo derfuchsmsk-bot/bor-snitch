@@ -26,6 +26,7 @@ async def test_generate_thought_text():
 
         thought = await ThoughtService.generate_thought_text("-100123")
         assert "двигайтесь по-людски" in thought
+        assert "— Снитч-бот" in thought
         assert "«" not in thought
         assert "»" not in thought
 
@@ -47,7 +48,9 @@ async def test_generate_thought_truncation_cleanup():
 
         mock_gen.return_value = mock_resp
         thought = await ThoughtService.generate_thought_text("-100123")
-        assert thought == "В хате все спокойно."
+        assert "В хате все спокойно." in thought
+        assert "— Снитч-бот" in thought
+        assert "Но Паштет опять пытается" not in thought
 
 
 
