@@ -18,49 +18,23 @@ SAFETY_SETTINGS = {
 
 class ThoughtService:
     @classmethod
-    async def generate_thought_text(cls, source_chat_id: int | str) -> str:
-        try:
-            c_id = int(source_chat_id)
-        except (ValueError, TypeError):
-            c_id = source_chat_id
-
-        now_utc = datetime.now(timezone.utc)
-        start_time = now_utc - timedelta(hours=12)
-        try:
-            logs = await message_repository.get_logs_for_time_range(c_id, start_time, now_utc)
-        except Exception as e:
-            logger.warning(f"Could not load logs for chat {c_id}: {e}")
-            logs = []
+    async def generate_thought_text(cls, source_chat_id: int | str = None) -> str:
+        c_id = None
+        if source_chat_id:
+            try:
+                c_id = int(source_chat_id)
+            except (ValueError, TypeError):
+                c_id = source_chat_id
 
         try:
-            lore_json = await LoreService.get_lore_as_json(c_id)
+            lore_json = await LoreService.get_lore_as_json(c_id) if c_id else "{}"
         except Exception as e:
             logger.warning(f"Could not load lore for chat {c_id}: {e}")
             lore_json = "{}"
 
-        if logs:
-            sample_logs = logs[-150:] if len(logs) > 150 else logs
-            log_lines = []
-            for m in sample_logs:
-                u = m.get("username") or m.get("full_name") or "Участник"
-                txt = m.get("text", "")
-                ts = m.get("timestamp")
-                time_str = ts.strftime("%H:%M") if hasattr(ts, "strftime") else ""
-                time_prefix = f"[{time_str}] " if time_str else ""
-                if txt:
-                    log_lines.append(f"{time_prefix}{u}: {txt}")
-            logs_summary = "\n".join(log_lines)
-        else:
-            logs_summary = "В чате пока тихо, пацаны молчат."
-
         prompt = get_scheduled_thought_prompt(
-            lore_json=lore_json,
-            current_context=logs_summary
+            lore_json=lore_json
         )
-
-        moscow_tz = timezone(timedelta(hours=getattr(config, "TIMEZONE_OFFSET", 3)))
-        current_time_str = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S (МСК)")
-        prompt = f"ТЕКУЩЕЕ МОСКОВСКОЕ ВРЕМЯ: {current_time_str}\n\n" + prompt
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
         response = await model.generate_content_async(

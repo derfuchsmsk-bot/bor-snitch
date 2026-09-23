@@ -254,14 +254,12 @@ class PromptService:
     @classmethod
     def format_scheduled_thought_prompt(
         cls,
-        lore_json: str = "{}",
-        current_context: str = ""
+        lore_json: str = "{}"
     ) -> str:
         template = cls.get_template("scheduled_thought_prompt")
         try:
             return SafeTemplate(template).safe_substitute(
-                lore_json=lore_json,
-                current_context=current_context
+                lore_json=lore_json
             )
         except Exception as e:
             logger.error(f"Error formatting scheduled_thought_prompt: {e}")
