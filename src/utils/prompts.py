@@ -68,10 +68,14 @@ def get_voice_digest_prompt(
 
 
 def get_scheduled_thought_prompt(
-    lore_json: str = "{}"
+    lore_json: str = "{}",
+    recent_thoughts: str = "",
+    suggested_theme: str = ""
 ) -> str:
     return PromptService.format_scheduled_thought_prompt(
-        lore_json=lore_json
+        lore_json=lore_json,
+        recent_thoughts=recent_thoughts,
+        suggested_theme=suggested_theme
     )
 
 class _DynamicPromptProxy:

@@ -1,4 +1,5 @@
 import logging
+import random
 from datetime import datetime, timezone, timedelta
 from vertexai.generative_models import GenerativeModel, HarmCategory, HarmBlockThreshold
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -6,6 +7,7 @@ from src.utils.game_config import config
 from src.utils.config import settings
 from src.utils.prompts import get_scheduled_thought_prompt
 from src.services.lore_service import LoreService
+from src.repositories.thought_repository import thought_repository
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,24 @@ SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
+
+THOUGHT_THEMES = [
+    "Деньги, долги и щедрость (почему мелочность и жадность разрушают братство)",
+    "Тишина, молчание и вес слова (сила умения вовремя прикусить язык и не трепаться)",
+    "Удача, занос и капризный фарт (почему шальные победы кружат голову глупцам)",
+    "Лицемерие и подхалимаж (как распознать фальшивую дружбу и лесть)",
+    "Лень, прокрастинация и суета (ирония над тем, как бессмысленная спешка сжигает жизнь)",
+    "Справедливость и карма (почему любой скрытый косяк рано или поздно вылезет наружу)",
+    "Проверка дружбы временем и трудностями (кто стоит рядом, когда кончился праздник)",
+    "Гордость vs понты (почему истинный авторитет никогда не доказывает свою важность криком)",
+    "Умение держать удар (как достойно принимать поражения и не опускать руки)",
+    "Зависть и чужой успех (умение искренне радоваться за брата, когда ему поперло)",
+    "Одиночество и цифровой шум (почему важно уметь оставаться наедине с собой)",
+    "Мужское слово и верность принципам (почему поступок всегда громче любых обещаний)",
+    "Внутреннее спокойствие и философия (почему тот, кто познал суть, ни с кем не спорит)",
+    "Ирония над человеческими слабостями (все мы грешны, но рамки приличия держать надо)",
+    "Великодушие и умение прощать (разница между слабостью и осознанным прощением)"
+]
 
 class ThoughtService:
     @classmethod
@@ -26,14 +46,28 @@ class ThoughtService:
             except (ValueError, TypeError):
                 c_id = source_chat_id
 
+        effective_chat_id = c_id or settings.MAIN_CHAT_ID
+
         try:
-            lore_json = await LoreService.get_lore_as_json(c_id) if c_id else "{}"
+            lore_json = await LoreService.get_lore_as_json(effective_chat_id)
         except Exception as e:
-            logger.warning(f"Could not load lore for chat {c_id}: {e}")
+            logger.warning(f"Could not load lore for chat {effective_chat_id}: {e}")
             lore_json = "{}"
 
+        # Fetch recent thoughts history to strictly forbid repetition
+        recent_thoughts_list = await thought_repository.get_recent_thoughts(effective_chat_id, limit=15)
+        if recent_thoughts_list:
+            recent_thoughts_str = "\n".join([f"- {t}" for t in recent_thoughts_list])
+        else:
+            recent_thoughts_str = "Пока нет предыдущих опубликованных мыслей."
+
+        # Pick a rotating target theme
+        suggested_theme = random.choice(THOUGHT_THEMES)
+
         prompt = get_scheduled_thought_prompt(
-            lore_json=lore_json
+            lore_json=lore_json,
+            recent_thoughts=recent_thoughts_str,
+            suggested_theme=suggested_theme
         )
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
@@ -48,7 +82,7 @@ class ThoughtService:
             return await model.generate_content_async(
                 contents=[prompt],
                 generation_config={
-                    "temperature": 0.85,
+                    "temperature": 0.95,
                     "max_output_tokens": 4096
                 },
                 safety_settings=SAFETY_SETTINGS
@@ -85,6 +119,9 @@ class ThoughtService:
                 raw_text = raw_text + "."
 
         if raw_text:
+            # Save raw thought to history for future deduplication
+            await thought_repository.save_thought(effective_chat_id, raw_text, theme=suggested_theme)
+
             year = datetime.now().year
             raw_text = f"{raw_text}\n\n— Снитч-бот, {year}г."
 

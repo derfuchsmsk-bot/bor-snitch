@@ -19,9 +19,12 @@ async def test_generate_thought_text():
     mock_resp.text = "«Сегодня в хате все тихо, двигайтесь по-людски.»"
 
     with patch("src.services.thought_service.LoreService.get_lore_as_json", new_callable=AsyncMock) as mock_lore, \
+         patch("src.services.thought_service.thought_repository.get_recent_thoughts", new_callable=AsyncMock) as mock_recent, \
+         patch("src.services.thought_service.thought_repository.save_thought", new_callable=AsyncMock) as mock_save, \
          patch("src.services.thought_service.GenerativeModel.generate_content_async", new_callable=AsyncMock) as mock_gen:
 
         mock_lore.return_value = '{"characters": []}'
+        mock_recent.return_value = ["Старая мысль про занос"]
         mock_gen.return_value = mock_resp
 
         thought = await ThoughtService.generate_thought_text("-100123")
@@ -29,6 +32,7 @@ async def test_generate_thought_text():
         assert "— Снитч-бот" in thought
         assert "«" not in thought
         assert "»" not in thought
+        mock_save.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -44,8 +48,11 @@ async def test_generate_thought_truncation_cleanup():
     mock_resp.text = "В хате все спокойно. Но Паштет опять пытается"
 
     with patch("src.services.thought_service.LoreService.get_lore_as_json", new_callable=AsyncMock), \
+         patch("src.services.thought_service.thought_repository.get_recent_thoughts", new_callable=AsyncMock) as mock_recent, \
+         patch("src.services.thought_service.thought_repository.save_thought", new_callable=AsyncMock), \
          patch("src.services.thought_service.GenerativeModel.generate_content_async", new_callable=AsyncMock) as mock_gen:
 
+        mock_recent.return_value = []
         mock_gen.return_value = mock_resp
         thought = await ThoughtService.generate_thought_text("-100123")
         assert "В хате все спокойно." in thought
