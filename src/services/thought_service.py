@@ -1,11 +1,11 @@
 import logging
 from datetime import datetime, timezone, timedelta
 from vertexai.generative_models import GenerativeModel, HarmCategory, HarmBlockThreshold
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from src.utils.game_config import config
 from src.utils.config import settings
 from src.utils.prompts import get_scheduled_thought_prompt
 from src.services.lore_service import LoreService
-from src.repositories.message_repository import message_repository
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +37,24 @@ class ThoughtService:
         )
 
         model = GenerativeModel(config.AI_MODEL_ANALYSIS)
-        response = await model.generate_content_async(
-            contents=[prompt],
-            generation_config={
-                "temperature": 0.85,
-                "max_output_tokens": 4096
-            },
-            safety_settings=SAFETY_SETTINGS
+
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=3, max=15),
+            retry=retry_if_exception_type(Exception),
+            reraise=True
         )
+        async def _call_gemini():
+            return await model.generate_content_async(
+                contents=[prompt],
+                generation_config={
+                    "temperature": 0.85,
+                    "max_output_tokens": 4096
+                },
+                safety_settings=SAFETY_SETTINGS
+            )
+
+        response = await _call_gemini()
 
         raw_text = ""
         if response.candidates:
