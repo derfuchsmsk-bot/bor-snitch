@@ -2,11 +2,21 @@ import logging
 import json
 import os
 from copy import deepcopy
+from string import Template
 from typing import Dict, Any, List
 from ..database import db
 from ..utils.game_config import config
 
 logger = logging.getLogger(__name__)
+
+class SafeTemplate(Template):
+    delimiter = '{'
+    pattern = r'''
+    \{(?:
+    (?P<escaped>\{)|
+    (?P<named>[_a-z][_a-z0-9]*)\}
+    )
+    '''
 
 PROMPTS_COLLECTION = "system_config"
 PROMPTS_DOC = "prompts"

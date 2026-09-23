@@ -67,7 +67,7 @@ class ThoughtService:
             contents=[prompt],
             generation_config={
                 "temperature": 0.85,
-                "max_output_tokens": 512
+                "max_output_tokens": 4096
             },
             safety_settings=SAFETY_SETTINGS
         )
@@ -75,6 +75,7 @@ class ThoughtService:
         raw_text = ""
         if response.candidates:
             candidate = response.candidates[0]
+            logger.info(f"Gemini thought candidate finish reason: {candidate.finish_reason}")
             if candidate.content and candidate.content.parts:
                 raw_text = "".join([
                     part.text for part in candidate.content.parts
@@ -84,6 +85,21 @@ class ThoughtService:
             raw_text = response.text.strip()
 
         raw_text = raw_text.strip().strip('"').strip('«').strip('»')
+
+        # Prevent mid-sentence cutoffs: ensure text ends with terminal punctuation
+        if raw_text and raw_text[-1] not in ('.', '!', '?', '…', '"', '»'):
+            last_punct = max(
+                raw_text.rfind('.'),
+                raw_text.rfind('!'),
+                raw_text.rfind('?'),
+                raw_text.rfind('…')
+            )
+            # If there's an earlier finished sentence, cut off the trailing incomplete fragment
+            if last_punct > 0:
+                raw_text = raw_text[:last_punct + 1].strip()
+            else:
+                raw_text = raw_text + "."
+
         return raw_text
 
     @classmethod

@@ -33,6 +33,28 @@ async def test_generate_thought_text():
 
 
 @pytest.mark.anyio
+async def test_generate_thought_truncation_cleanup():
+    # If model cut off trailing sentence, verify it trims to last complete sentence
+    mock_candidate = MagicMock()
+    mock_part = MagicMock()
+    mock_part.text = "В хате все спокойно. Но Паштет опять пытается"
+    mock_part.thought = False
+    mock_candidate.content.parts = [mock_part]
+    mock_resp = MagicMock()
+    mock_resp.candidates = [mock_candidate]
+    mock_resp.text = "В хате все спокойно. Но Паштет опять пытается"
+
+    with patch("src.services.thought_service.message_repository.get_logs_for_time_range", new_callable=AsyncMock), \
+         patch("src.services.thought_service.LoreService.get_lore_as_json", new_callable=AsyncMock), \
+         patch("src.services.thought_service.GenerativeModel.generate_content_async", new_callable=AsyncMock) as mock_gen:
+
+        mock_gen.return_value = mock_resp
+        thought = await ThoughtService.generate_thought_text("-100123")
+        assert thought == "В хате все спокойно."
+
+
+
+@pytest.mark.anyio
 async def test_create_and_send_thought_success():
     mock_bot = MagicMock()
     mock_bot.send_message = AsyncMock()
