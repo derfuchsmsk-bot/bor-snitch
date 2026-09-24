@@ -66,7 +66,8 @@ async def test_create_and_send_thought_success():
     mock_bot = MagicMock()
     mock_bot.send_message = AsyncMock()
 
-    with patch.object(ThoughtService, "generate_thought_text", new_callable=AsyncMock) as mock_gen:
+    with patch.object(config, "THOUGHTS_ENABLED", True), \
+         patch.object(ThoughtService, "generate_thought_text", new_callable=AsyncMock) as mock_gen:
         mock_gen.return_value = "Базар фильтруйте, братья."
 
         res = await ThoughtService.create_and_send_thought(
@@ -95,7 +96,8 @@ async def test_create_and_send_thought_disabled():
 
 @pytest.mark.anyio
 async def test_scheduled_thought_execution():
-    with patch("src.services.thought_service.ThoughtService.create_and_send_thought", new_callable=AsyncMock) as mock_send, \
+    with patch.object(config, "THOUGHTS_ENABLED", True), \
+         patch("src.services.thought_service.ThoughtService.create_and_send_thought", new_callable=AsyncMock) as mock_send, \
          patch.object(settings, "CHANNEL_ID", "@sayonarasquad"):
         await scheduled_thought()
         mock_send.assert_called_once()
@@ -104,7 +106,14 @@ async def test_scheduled_thought_execution():
 
 
 def test_sync_thoughts_jobs():
-    sync_thoughts_jobs()
-    for i in range(1, 6):
-        job = scheduler.get_job(f"thought_{i}")
-        assert job is not None
+    with patch.object(config, "THOUGHTS_ENABLED", True):
+        sync_thoughts_jobs()
+        for i in range(1, 6):
+            job = scheduler.get_job(f"thought_{i}")
+            assert job is not None
+
+    with patch.object(config, "THOUGHTS_ENABLED", False):
+        sync_thoughts_jobs()
+        for i in range(1, 6):
+            job = scheduler.get_job(f"thought_{i}")
+            assert job is None
