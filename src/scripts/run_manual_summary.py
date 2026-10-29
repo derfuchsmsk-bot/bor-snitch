@@ -194,7 +194,7 @@ async def generate_report_text_async(final_result, chat_id):
             if status == 'fulfilled':
                 text += f"✅ <b>Сдержал слово:</b> {orig_users} — «{escape(orig_text)}»\n"
             elif status == 'broken':
-                text += f"❌ <b>ФУФЛОМЕТ:</b> {orig_users} — «{escape(orig_text)}»\n"
+                text += f"📝 <b>Договорённость не выполнена:</b> {orig_users} — «{escape(orig_text)}»\n"
                 
     updated_agreements = final_result.get('updated_agreements', [])
     if updated_agreements:

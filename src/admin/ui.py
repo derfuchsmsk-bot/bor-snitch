@@ -317,7 +317,7 @@ def get_admin_html() -> str:
 
             <div class="pt-2 border-t border-slate-800">
               <div class="flex justify-between items-center mb-1">
-                <label class="text-xs font-medium text-slate-400">Шанс циничного коммента</label>
+                <label class="text-xs font-medium text-slate-400">Шанс комментария</label>
                 <span id="label-CYNICAL_COMMENT_CHANCE" class="text-xs font-mono text-purple-400 font-bold">0.2%</span>
               </div>
               <input type="range" id="cfg-CYNICAL_COMMENT_CHANCE" min="0" max="0.05" step="0.001" oninput="updateRangeLabel(this, '%', 100)"
@@ -338,11 +338,23 @@ def get_admin_html() -> str:
               <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
                 <div>
                   <div class="text-xs font-semibold text-white">Спонтанное правосудие (ИИ)</div>
-                  <div class="text-[10px] text-slate-400">Бот сам начисляет очки за масть/людское в диалоге</div>
+                  <div class="text-[10px] text-slate-400">Поощрения за помощь и проверка событий в диалоге</div>
                 </div>
                 <input type="checkbox" id="cfg-SPONTANEOUS_JUDGMENT_ENABLED" class="w-5 h-5 accent-purple-500 rounded cursor-pointer">
               </label>
 
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div><div class="text-xs font-semibold text-white">Автоматические штрафы в диалоге</div><div class="text-[10px] text-slate-400">По умолчанию выключены; поощрения продолжают работать.</div></div>
+                <input type="checkbox" id="cfg-ALLOW_SPONTANEOUS_PENALTIES" class="w-5 h-5 accent-purple-500 rounded cursor-pointer">
+              </label>
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div><div class="text-xs font-semibold text-white">Штрафы за молчание</div><div class="text-[10px] text-slate-400">По умолчанию выключены: участие в чате добровольное.</div></div>
+                <input type="checkbox" id="cfg-ENABLE_AFK_PENALTIES" class="w-5 h-5 accent-purple-500 rounded cursor-pointer">
+              </label>
+              <label class="flex items-center justify-between p-3 rounded-xl bg-[#162032] border border-slate-800 cursor-pointer">
+                <div><div class="text-xs font-semibold text-white">Штрафы за повторные отклонённые обращения</div><div class="text-[10px] text-slate-400">По умолчанию выключены: отказ в проверке не доказывает злой умысел.</div></div>
+                <input type="checkbox" id="cfg-FALSE_REPORT_PENALTIES_ENABLED" class="w-5 h-5 accent-purple-500 rounded cursor-pointer">
+              </label>
               <div>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Кулдаун спонтанных вердиктов (сек)</label>
                 <input type="number" id="cfg-SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
@@ -354,7 +366,7 @@ def get_admin_html() -> str:
           <div class="bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4">
             <h3 class="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
               <span class="text-base">🎭</span>
-              Циничные Эмодзи-Реакции
+              Дружелюбные реакции
             </h3>
 
             <div>
@@ -384,7 +396,7 @@ def get_admin_html() -> str:
             <div>
               <label class="block text-xs font-medium text-slate-400 mb-1">Разрешенные эмодзи</label>
               <input type="text" id="cfg-REACTION_ALLOWED_EMOJIS" class="w-full px-3 py-2 bg-[#1a2333] border border-slate-700 rounded-xl text-xs text-white font-mono">
-              <div class="text-[10px] text-slate-500 mt-1">Эмодзи через пробел (🤡 🗿 🚽 👑 🍿 👀 🔥 👌)</div>
+              <div class="text-[10px] text-slate-500 mt-1">Эмодзи через пробел (❤ 👍 🔥 🎉 👌 👀)</div>
             </div>
           </div>
 
@@ -591,7 +603,7 @@ def get_admin_html() -> str:
                 <tr>
                   <th class="py-3 px-4">Пользователь</th>
                   <th class="py-3 px-4 text-center">Очки</th>
-                  <th class="py-3 px-4">Масть (Ранг)</th>
+                  <th class="py-3 px-4">Игровой уровень</th>
                   <th class="py-3 px-4">Ачивки</th>
                   <th class="py-3 px-4 text-right">Действия с очками</th>
                 </tr>
@@ -637,7 +649,7 @@ def get_admin_html() -> str:
             <div class="text-[10px] text-slate-500 mt-0.5">В текущем чате</div>
           </div>
           <div class="bg-[#111827] border border-rose-900/30 p-4 rounded-xl flex flex-col justify-between">
-            <div class="text-rose-400 text-xs font-medium">Штрафы (Масть)</div>
+            <div class="text-rose-400 text-xs font-medium">Штрафные очки</div>
             <div id="verdicts-stat-penalties" class="text-2xl font-bold font-mono text-rose-400 mt-1">0</div>
             <div id="verdicts-stat-penalties-pts" class="text-[10px] text-slate-400 mt-0.5">+0 pts начислено</div>
           </div>
@@ -1160,8 +1172,8 @@ def get_admin_html() -> str:
             <div class="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-[11px]">
               <div class="flex items-center gap-1.5 flex-nowrap">
                 <span class="text-slate-500 text-[10px] uppercase font-semibold">Шаблоны:</span>
-                <button type="button" onclick="insertChatTemplate('⚖️ Масть зафиксирована: ')"
-                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 whitespace-nowrap">⚖️ Масть</button>
+                <button type="button" onclick="insertChatTemplate('⚖️ Разбор ситуации: ')"
+                        class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 whitespace-nowrap">⚖️ Разбор</button>
                 <button type="button" onclick="insertChatTemplate('👑 По-людски: ')"
                         class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 whitespace-nowrap">👑 Людское</button>
                 <button type="button" onclick="insertChatTemplate('📣 Сайонара сбор! ')"
@@ -1245,7 +1257,7 @@ def get_admin_html() -> str:
         <label class="block text-xs font-medium text-slate-400 mb-1">Список ачивок (каждая с новой строки или JSON)</label>
         <textarea id="modal-achievements-text" rows="8"
                   class="w-full p-3 bg-[#0c121e] border border-slate-700 rounded-xl text-slate-100 font-mono text-xs leading-relaxed"></textarea>
-        <div class="text-[10px] text-slate-500 mt-1">Пример: Король Стукачей 👑 | Обиженный года 🚽</div>
+        <div class="text-[10px] text-slate-500 mt-1">Пример: Спасибо за помощь 🤝 | Организатор встречи 🎉</div>
       </div>
       <div class="flex justify-end gap-2 pt-2">
         <button onclick="closeModal('modal-achievements')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs">Отмена</button>
@@ -2199,7 +2211,7 @@ def get_admin_html() -> str:
       usersList.forEach(u => {
         const stats = u.stats || {};
         const points = stats.total_points || 0;
-        const rank = stats.current_rank || 'Порядочный 😐';
+        const rank = stats.current_rank || 'Уровень 0 🌿';
         const achievements = stats.achievements || [];
         const falseReports = stats.false_report_count || 0;
         const username = u.username ? `@${u.username}` : (u.full_name || `ID ${u.user_id}`);

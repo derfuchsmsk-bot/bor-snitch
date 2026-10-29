@@ -59,6 +59,9 @@ class ConfigUpdateRequest(BaseModel):
     POINTS_SNITCHING: Optional[int] = Field(None, ge=0, le=1000)
     POINTS_AFK_BASE: Optional[int] = Field(None, ge=0, le=1000)
     POINTS_AFK_DAILY: Optional[int] = Field(None, ge=0, le=1000)
+    ENABLE_AFK_PENALTIES: Optional[bool] = None
+    ALLOW_SPONTANEOUS_PENALTIES: Optional[bool] = None
+    FALSE_REPORT_PENALTIES_ENABLED: Optional[bool] = None
     GAMBLE_WIN_CHANCE: Optional[float] = Field(None, ge=0.0, le=1.0)
     GAMBLE_WIN_POINTS: Optional[int] = Field(None, ge=0, le=1000)
     GAMBLE_LOSS_POINTS: Optional[int] = Field(None, ge=0, le=1000)

@@ -208,12 +208,12 @@ async def test_admin_chats_and_users_api():
                 "user_id": "111",
                 "username": "snitcher",
                 "full_name": "Snitcher Bob",
-                "stats": {"total_points": 75, "current_rank": "Шнырь 🧹"}
+                "stats": {"total_points": 75, "current_rank": "Уровень 1 📝"}
             }
         ], None)
 
         mock_add_points.return_value = 100
-        mock_set_points.return_value = {"total_points": 120, "current_rank": "Шнырь 🧹"}
+        mock_set_points.return_value = {"total_points": 120, "current_rank": "Уровень 1 📝"}
 
         # GET chat users
         resp = client.get(f"/api/admin/chats/{settings.MAIN_CHAT_ID}/users", headers=headers)

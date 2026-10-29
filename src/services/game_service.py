@@ -4,13 +4,14 @@ from ..utils.game_config import config
 from ..services import db
 from ..utils import messages
 from ..utils.text import escape
+from ..utils.ranks import calculate_rank
 
 class GameService:
     
     @staticmethod
     def calculate_rank(points: int) -> str:
         """Wrapper for rank calculation."""
-        return db.calculate_rank(points)
+        return calculate_rank(points)
 
     @staticmethod
     async def play_casino(user_id: int, chat_id: int) -> str:
@@ -63,19 +64,19 @@ class GameService:
         stats_list.sort(key=lambda x: int(x.get('total_points', 0)), reverse=True)
         top_stats = stats_list[:10]
         
-        text = f"🏆 <b>Топ Снитчей (Сезон {current_season}):</b>\n\n"
+        text = f"🏆 <b>Игровые очки (Сезон {current_season}):</b>\n\n"
         if not top_stats:
             text += "Пока пусто. Сезон только начался! 🍂"
         
         for i, data in enumerate(top_stats, 1):
-            rank = escape(data.get('current_rank', 'Порядочный 😐'))
+            rank = escape(calculate_rank(data.get("total_points", 0)))
             points = data.get('total_points', 0)
             username = escape(data.get('username', 'Unknown'))
             if not username.startswith("@"):
                  username = f"@{username}"
             
-            text += f"{i}. {username} — {points} очков\n"
-            text += f"   🃏Масть: {rank}\n"
+            text += f"{i}. {username} — {points} штрафных очков\n"
+            text += f"   🃏 {rank}\n"
             
             achievements = data.get('achievements', [])
             if achievements:
@@ -109,12 +110,12 @@ class GameService:
             if stats.get('season_id') != current_season:
                 stats['total_points'] = 0
                 stats['snitch_count'] = 0
-                stats['current_rank'] = 'Порядочный 😐'
+                stats['current_rank'] = 'Уровень 0 🌿'
 
         if not stats:
-            return f"👤 <b>{escape(target_user.full_name)}</b> без косяков. (0 очков)"
+            return f"👤 <b>{escape(target_user.full_name)}</b> пока без игровых очков. 🌿"
 
-        rank = escape(stats.get('current_rank', 'Порядочный 😐'))
+        rank = escape(calculate_rank(stats.get("total_points", 0)))
         points = stats.get('total_points', 0)
         
         display_name = escape(target_user.full_name)
@@ -122,8 +123,8 @@ class GameService:
             display_name = f"@{target_user.username}"
 
         text = (
-            f"👤 <b>Личное Дело:</b> {display_name}\n\n"
-            f"🃏 <b>Масть:</b> {rank}\n"
+            f"👤 <b>Карточка участника:</b> {display_name}\n\n"
+            f"🃏 {rank}\n"
             f"⚖️ <b>Очки:</b> {points}"
         )
 

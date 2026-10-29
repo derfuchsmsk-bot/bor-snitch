@@ -169,6 +169,8 @@ async def check_afk_users(chat_id: int):
     Checks for users who haven't written for 2+ days.
     Returns list of offenders.
     """
+    if not config.ENABLE_AFK_PENALTIES:
+        return []
     chat_id = str(chat_id)
     stats_ref = db.collection("chats").document(chat_id).collection("user_stats")
     

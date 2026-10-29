@@ -174,7 +174,7 @@ class TestPointsLedgerAndAmnesty(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["new_total"], 100) # 150 - 50 = 100
         mock_transaction.update.assert_any_call(mock_user_ref, {
             "total_points": 100,
-            "current_rank": "Шнырь 🧹"
+            "current_rank": "Уровень 1 📝"
         })
 
 

@@ -7,7 +7,7 @@ class UserStats(BaseModel):
     username: Optional[str] = None
     full_name: Optional[str] = None
     total_points: int = 0
-    current_rank: str = "Порядочный 😐"
+    current_rank: str = "Уровень 0 🌿"
     snitch_count: int = 0
     false_report_count: int = 0
     last_active_date: Optional[datetime] = None

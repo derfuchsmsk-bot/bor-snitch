@@ -19,14 +19,12 @@
     "REACTION_CHANCE": 0.02,
     "REACTION_COOLDOWN_SECONDS": 120,
     "REACTION_ALLOWED_EMOJIS": [
-        "🤡",
-        "🗿",
-        "🚽",
-        "👑",
-        "🍿",
-        "👀",
+        "❤",
+        "👍",
         "🔥",
-        "👌"
+        "🎉",
+        "👌",
+        "👀"
     ],
     "VOICE_DIGEST_ENABLED": true,
     "VOICE_DIGEST_TIME_1": "14:00",
@@ -40,7 +38,7 @@
     "TTS_PROVIDER": "gemini",
     "GOOGLE_TTS_MODEL": "gemini-3.1-flash-tts-preview",
     "GOOGLE_TTS_VOICE": "Sadaltager",
-    "GOOGLE_TTS_STYLE": "Read aloud in an authoritative, calm, slightly sarcastic tone with dry humor, like an observant prison cell boss.",
+    "GOOGLE_TTS_STYLE": "Speak warmly and naturally, with gentle humor, like a friendly host catching up with friends. No scolding or intimidating delivery.",
     "ELEVENLABS_VOICE_ID": "pNInz6obpgDQGcFmaJgB",
     "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
     "ELEVENLABS_STABILITY": 0.45,
@@ -81,5 +79,8 @@
     "SESSION_TIMEOUT_HOURS": 3,
     "ENABLE_DEBTS": true,
     "AI_MODEL_ANALYSIS": "gemini-3.8-flash",
-    "AI_MODEL_MULTIMODAL": "gemini-3.8-flash"
+    "AI_MODEL_MULTIMODAL": "gemini-3.8-flash",
+    "ENABLE_AFK_PENALTIES": false,
+    "ALLOW_SPONTANEOUS_PENALTIES": false,
+    "FALSE_REPORT_PENALTIES_ENABLED": false
 }

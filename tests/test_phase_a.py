@@ -46,16 +46,16 @@ class TestUserRepositoryLogic(unittest.TestCase):
         self.repo = UserRepository()
 
     def test_calculate_rank(self):
-        self.assertEqual(self.repo.calculate_rank(0), "Порядочный 😐")
-        self.assertEqual(self.repo.calculate_rank(49), "Порядочный 😐")
-        self.assertEqual(self.repo.calculate_rank(50), "Шнырь 🧹")
-        self.assertEqual(self.repo.calculate_rank(249), "Шнырь 🧹")
-        self.assertEqual(self.repo.calculate_rank(250), "Козёл 🐐")
-        self.assertEqual(self.repo.calculate_rank(499), "Козёл 🐐")
-        self.assertEqual(self.repo.calculate_rank(500), "Обиженный 🚽")
-        self.assertEqual(self.repo.calculate_rank(999), "Обиженный 🚽")
-        self.assertEqual(self.repo.calculate_rank(1000), "Масть Проткнутая 👑")
-        self.assertEqual(self.repo.calculate_rank(2000), "Масть Проткнутая 👑")
+        self.assertEqual(self.repo.calculate_rank(0), "Уровень 0 🌿")
+        self.assertEqual(self.repo.calculate_rank(49), "Уровень 0 🌿")
+        self.assertEqual(self.repo.calculate_rank(50), "Уровень 1 📝")
+        self.assertEqual(self.repo.calculate_rank(249), "Уровень 1 📝")
+        self.assertEqual(self.repo.calculate_rank(250), "Уровень 2 🧭")
+        self.assertEqual(self.repo.calculate_rank(499), "Уровень 2 🧭")
+        self.assertEqual(self.repo.calculate_rank(500), "Уровень 3 ☕")
+        self.assertEqual(self.repo.calculate_rank(999), "Уровень 3 ☕")
+        self.assertEqual(self.repo.calculate_rank(1000), "Уровень 4 🔄")
+        self.assertEqual(self.repo.calculate_rank(2000), "Уровень 4 🔄")
 
     def test_user_stats_defaults(self):
         stats = UserStats(user_id="123", chat_id="456")
@@ -150,6 +150,7 @@ class TestReportService(unittest.IsolatedAsyncioTestCase):
 
     @patch("src.services.report_service.db")
     @patch("src.services.report_service.ai")
+    @patch.object(config, "FALSE_REPORT_PENALTIES_ENABLED", True)
     async def test_genuine_rejection_increments_strikes_and_penalizes_at_limit(self, mock_ai, mock_db):
         mock_msg = MagicMock()
         mock_msg.chat.id = -100123
@@ -180,7 +181,7 @@ class TestReportService(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(success)
         mock_db.increment_false_report_count.assert_called_once_with(-100123, 111)
         mock_db.user_repository.apply_point_event_transactional.assert_called_once()
-        self.assertIn("Ложных доносов подряд", reply_text)
+        self.assertIn("Необоснованных обращений", reply_text)
 
 
 if __name__ == "__main__":

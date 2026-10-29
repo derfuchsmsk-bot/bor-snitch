@@ -4,6 +4,7 @@ from google.cloud import firestore
 from src.database import db
 from src.utils.game_config import config
 from src.models.points import PointEvent
+from src.utils.ranks import calculate_rank
 from datetime import datetime, timezone
 import logging
 
@@ -18,20 +19,7 @@ class UserRepository:
         return self.db.collection("chats").document(str(chat_id)).collection("points_ledger").document(str(event_id))
 
     def calculate_rank(self, points: int) -> str:
-        """
-        Calculates the Snitch Rank based on total points.
-        Theme: Prison Caste (Reverse/Ironic)
-        """
-        if points >= config.RANK_PIERCED[0]:
-            return "Масть Проткнутая 👑"
-        elif points >= config.RANK_OFFENDED[0]:
-            return "Обиженный 🚽"
-        elif points >= config.RANK_GOAT[0]:
-            return "Козёл 🐐"
-        elif points >= config.RANK_SHNYR[0]:
-            return "Шнырь 🧹"
-        else:
-            return "Порядочный 😐"
+        return calculate_rank(points)
 
     async def get_user_stats(self, chat_id: int, user_id: int) -> dict:
         """
@@ -39,7 +27,9 @@ class UserRepository:
         """
         doc = await self._get_user_ref(chat_id, user_id).get()
         if doc.exists:
-            return doc.to_dict()
+            data = doc.to_dict()
+            data["current_rank"] = self.calculate_rank(data.get("total_points", 0))
+            return data
         return None
 
     async def update_user_last_active(self, chat_id: int, user_id: int, last_active_date, username=None, full_name=None, is_bot: bool = False):
@@ -269,6 +259,7 @@ class UserRepository:
         last_doc = None
         async for doc in query.stream():
             data = doc.to_dict()
+            data["current_rank"] = self.calculate_rank(data.get("total_points", 0))
             user_id = doc.id
             username = data.get('username')
             full_name = data.get('full_name', username)
@@ -357,7 +348,7 @@ class UserRepository:
                         user_map[uid] = {
                             "username": u_data.get("username"),
                             "full_name": u_data.get("full_name") or u_data.get("username") or uid,
-                            "rank": u_data.get("current_rank") or "Бродяга"
+                            "rank": self.calculate_rank(u_data.get("total_points", 0))
                         }
             except Exception as e:
                 logging.warning(f"Could not enrich users for points ledger: {e}")

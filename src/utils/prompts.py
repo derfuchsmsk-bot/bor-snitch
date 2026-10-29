@@ -1,5 +1,6 @@
 from ..services.prompt_service import PromptService
 from .game_config import config
+from .tone import with_friendly_policy
 
 # Backwards compatibility functions and proxies:
 def get_system_prompt(lore_json: str, verified_facts: str = "", current_context: str = "", lessons: list = None, active_agreements: str = "") -> str:
@@ -84,7 +85,7 @@ class _DynamicPromptProxy:
         self._key = key
 
     def __str__(self) -> str:
-        return PromptService.get_template(self._key)
+        return with_friendly_policy(PromptService.get_template(self._key))
 
     def __repr__(self) -> str:
         return str(self)

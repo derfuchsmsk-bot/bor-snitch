@@ -54,46 +54,30 @@ class ChatService:
         if last_time and (now - last_time).total_seconds() < cooldown:
             return False, ""
 
-        allowed_emojis = getattr(config, "REACTION_ALLOWED_EMOJIS", ["🤡", "🗿", "🚽", "👑", "🍿", "👀", "🔥", "👌"])
+        # Filter old saved palettes as well as new defaults.
+        mocking = {"🤡", "🚽", "💩", "🖕", "🍿"}
+        allowed_emojis = [emoji for emoji in config.REACTION_ALLOWED_EMOJIS if emoji not in mocking]
         if not allowed_emojis:
             return False, ""
-
-        base_chance = getattr(config, "REACTION_CHANCE", 0.02)
-        chance = base_chance
+        chance = config.REACTION_CHANCE
         text_lower = text.lower()
         preferred_emoji = None
-
-        # Triggers:
-        # 1. Whining, cringe, complaining -> 🤡
-        if any(w in text_lower for w in ["устал", "все плохо", "всё плохо", "тяжело", "кринж", "душно", "зануда", "бред", "ппц", "жесть", "нытье", "обиделся"]):
-            chance += 0.08
-            preferred_emoji = "🤡"
-
-        # 2. Sinner roast target (high points / rank Обиженный / Козёл) -> 🚽 or 🤡
-        pts = stats.get('total_points', 0) if stats else 0
-        if pts >= 250:
-            chance += 0.06
-            preferred_emoji = "🚽" if "🚽" in allowed_emojis else "🤡"
-
-        # 3. Drama, gossip, accusations, snitching -> 🍿 or 👀
-        if any(w in text_lower for w in ["донос", "крыса", "снитч", "предатель", "врешь", "врёшь", "спорим", "забьемся", "докажи", "слился", "позор"]):
-            chance += 0.08
-            preferred_emoji = "🍿" if "🍿" in allowed_emojis else "👀"
-
-        # 4. Sigma / pact / agreement / respect -> 🗿 or 👑
-        if any(w in text_lower for w in ["по рукам", "договорились", "базар", "пацан", "красава", "база", "согласен", "победа", "слово"]):
-            chance += 0.08
-            preferred_emoji = "🗿" if "🗿" in allowed_emojis else "👑"
-
-        # 5. Stickers / memes -> 🔥 or 🤡
-        if "[sticker]" in text_lower or "[image/meme]" in text_lower:
-            chance += 0.05
-            preferred_emoji = "🔥" if "🔥" in allowed_emojis else "🤡"
-
-        # 6. Questions
-        if "?" in text:
+        if any(word in text_lower for word in ["устал", "все плохо", "всё плохо", "тяжело", "обидел", "болею", "грустно", "не вывожу"]):
+            supportive = [emoji for emoji in allowed_emojis if emoji in {"❤", "❤️", "👍"}]
+            if not supportive:
+                return False, ""
+            preferred_emoji = supportive[0]
+        elif any(word in text_lower for word in ["спасибо", "помог", "красава", "поддерж"]):
             chance += 0.04
-            preferred_emoji = "👀"
+            preferred_emoji = next((emoji for emoji in ["❤", "👍", "👌"] if emoji in allowed_emojis), None)
+        elif any(word in text_lower for word in ["договорились", "победа", "получилось", "по рукам"]):
+            chance += 0.04
+            preferred_emoji = next((emoji for emoji in ["🎉", "👍", "👌"] if emoji in allowed_emojis), None)
+        elif "[sticker]" in text_lower or "[image/meme]" in text_lower:
+            chance += 0.04
+            preferred_emoji = "🔥" if "🔥" in allowed_emojis else None
+        elif "?" in text:
+            preferred_emoji = "👀" if "👀" in allowed_emojis else None
 
         if random.random() < chance:
             if preferred_emoji and preferred_emoji in allowed_emojis:
@@ -173,10 +157,6 @@ class ChatService:
             
         # Rant trigger
         if len(text) > 150:
-            chance += 0.05
-            
-        # Sinner roast target (roast users with high points)
-        if stats and stats.get('total_points', 0) > 150:
             chance += 0.05
             
         return random.random() < chance
@@ -345,7 +325,8 @@ class ChatService:
                     award_points and
                     getattr(config, "SPONTANEOUS_JUDGMENT_ENABLED", True) and
                     target_user_str and
-                    points_delta != 0
+                    points_delta != 0 and
+                    (points_delta < 0 or config.ALLOW_SPONTANEOUS_PENALTIES)
                 ):
                     last_judgment = cls._last_spontaneous_judgment_time.get(chat_id)
                     cooldown = getattr(config, "SPONTANEOUS_JUDGMENT_COOLDOWN_SECONDS", 180)
@@ -378,7 +359,7 @@ class ChatService:
                                     user_id=str(target_id),
                                     points_delta=points_delta,
                                     event_type="spontaneous_verdict",
-                                    reason=verdict_reason or ("Масть" if points_delta > 0 else "Людское"),
+                                    reason=verdict_reason or ("Нарушение правил" if points_delta > 0 else "Помощь участникам"),
                                     season_id="global"
                                 )
                                 apply_res = await db.user_repository.apply_point_event_transactional(chat_id, event)
@@ -391,16 +372,16 @@ class ChatService:
                                             chat_id=chat_id,
                                             msg_id=target_msg_id,
                                             reporter_id=bot_user.id,
-                                            reason=verdict_reason or "Масть",
+                                            reason=verdict_reason or "Нарушение правил",
                                             points_awarded=points_delta,
                                             ai_thought_process=f"Spontaneous verdict in chat: {comment_body}"
                                         )
 
                                     tag_display = f"@{resolved_name}" if not str(resolved_name).startswith('@') else resolved_name
-                                    clean_reason = escape(verdict_reason or ("Масть" if points_delta > 0 else "Людское"))
+                                    clean_reason = escape(verdict_reason or ("Нарушение правил" if points_delta > 0 else "Помощь участникам"))
 
                                     if points_delta > 0:
-                                        banner = f"\n\n⚖️ <b>Вердикт Смотрящего: +{points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
+                                        banner = f"\n\n⚖️ <b>Разбор ситуации: +{points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
                                     else:
                                         banner = f"\n\n👑 <b>Людской поступок: {points_delta} pts {tag_display}</b>\n📝 <i>Причина: {clean_reason}</i>"
 

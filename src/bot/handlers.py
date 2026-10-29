@@ -89,7 +89,7 @@ async def cmd_stats(message: types.Message):
 async def cmd_rules(message: types.Message):
     if config.BOT_DISABLED:
         return
-    await message.answer(messages.RULES_TEXT, parse_mode="HTML")
+    await message.answer(messages.get_rules_text(), parse_mode="HTML")
 
 @router.message(Command("agreements"))
 async def cmd_agreements(message: types.Message):
@@ -287,7 +287,7 @@ async def cmd_voice_digest(message: types.Message):
         return
 
     from ..services.voice_digest_service import VoiceDigestService
-    status_msg = await message.reply("🎙️ <i>Служба криминальной хроники готовит экстренный выпуск...</i>", parse_mode="HTML")
+    status_msg = await message.reply("🎙️ <i>Собираю новости, хорошие моменты и планы компании...</i>", parse_mode="HTML")
     try:
         now_hour = (message.date.hour + getattr(config, "TIMEZONE_OFFSET", 3)) % 24
         edition = f"Экстренный выпуск ({now_hour:02d}:00 МСК)"
@@ -377,7 +377,7 @@ async def cmd_forget(message: types.Message):
     # 2. Invalidate caches
     FactService.invalidate_cache(chat_id)
     
-    await message.reply("🧹 <b>Память и текущий контекст очищены!</b>\nЯ забыл все недавние события и сбросил лор. Теперь я как новенький.", parse_mode="HTML")
+    await message.reply("🧹 <b>Лор и текущий контекст сброшены.</b>\nСохранённые факты, сообщения и досье остаются. Эта команда не удаляет всю историю.", parse_mode="HTML")
 
 @router.message_reaction()
 async def handle_reactions(reaction: MessageReactionUpdated):

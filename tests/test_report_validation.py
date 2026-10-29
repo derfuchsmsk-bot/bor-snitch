@@ -24,7 +24,7 @@ class TestReportValidationEnhancements(unittest.IsolatedAsyncioTestCase):
         self.assertIn("mast_vs_lyudskoe", formatted)
         self.assertIn("<active_agreements>", formatted)
         self.assertIn("навесик и фильм", formatted)
-        self.assertIn("СЛИВ С ДОГОВОРЕННОСТЕЙ ИЛИ СОВМЕСТНЫХ ПЛАНОВ", formatted)
+        self.assertIn("ИЗМЕНЕНИЕ ПЛАНОВ И ДОГОВОРЁННОСТИ", formatted)
 
     @patch("src.services.learning.LearningService.get_active_lessons", new_callable=AsyncMock, return_value=[])
     @patch("src.services.ai.GenerativeModel")

@@ -88,9 +88,11 @@ class ReportService:
 
         # 6. Handle Genuinely Unfounded Report (Rejected)
         else:
-            new_count = await db.increment_false_report_count(chat_id, reporter_id)
             deny_reason = escape(result.reason if result else "Недостаточно оснований")
             response_text = messages.REPORT_REJECTED.format(reason=deny_reason)
+            if not config.FALSE_REPORT_PENALTIES_ENABLED or result.status == "insufficient_data":
+                return response_text, False
+            new_count = await db.increment_false_report_count(chat_id, reporter_id)
 
             if new_count % config.FALSE_REPORT_LIMIT == 0:
                 penalty_event = PointEvent(
