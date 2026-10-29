@@ -20,27 +20,25 @@ def test_should_react_triggers():
     config.REACTION_CHANCE = 1.0  # 100% chance for test
     config.REACTION_COOLDOWN_SECONDS = 0
 
-    # Respond to distress with support
+    # Whining trigger
     should, emoji = ChatService.should_react(12345, "Ой, я так устал, все плохо и тяжело", {})
     assert should is True
-    assert emoji == "❤"
+    assert emoji == "🤡"
 
     # Drama / snitching trigger
     should, emoji = ChatService.should_react(12345, "Он крыса и предатель, это донос", {})
     assert should is True
-    assert emoji in config.REACTION_ALLOWED_EMOJIS
-    assert emoji not in ["🤡", "🚽", "🍿"]
+    assert emoji in ["🍿", "👀"]
 
     # Sigma / agreement trigger
     should, emoji = ChatService.should_react(12345, "По рукам, договорились пацаны", {})
     assert should is True
-    assert emoji == "🎉"
+    assert emoji in ["🗿", "👑"]
 
-    # Old scores do not make someone a target
+    # High points sinner
     should, emoji = ChatService.should_react(12345, "Обычный текст ни о чем", {"total_points": 500})
     assert should is True
-    assert emoji in config.REACTION_ALLOWED_EMOJIS
-    assert emoji not in ["🤡", "🚽", "🍿"]
+    assert emoji in ["🚽", "🤡"]
 
 
 def test_reaction_cooldown():
@@ -69,9 +67,9 @@ async def test_process_reaction_success():
 
     with patch("src.services.chat_service.db.get_user_stats", new_callable=AsyncMock) as mock_stats:
         mock_stats.return_value = {"total_points": 0}
-        reacted = await ChatService.process_reaction(mock_msg, "Спасибо за помощь")
+        reacted = await ChatService.process_reaction(mock_msg, "жесть какой кринж")
         assert reacted is True
         assert mock_msg.react.called
         call_args = mock_msg.react.call_args[1]["reaction"]
         assert len(call_args) == 1
-        assert call_args[0].emoji == "❤"
+        assert call_args[0].emoji == "🤡"

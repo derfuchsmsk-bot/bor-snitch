@@ -6,7 +6,6 @@ from string import Template
 from typing import Dict, Any, List
 from ..database import db
 from ..utils.game_config import config
-from ..utils.tone import with_friendly_policy
 
 logger = logging.getLogger(__name__)
 
@@ -143,14 +142,7 @@ class PromptService:
                 lore_json=lore_json,
                 verified_facts=verified_facts,
                 current_context=current_context,
-                lessons_str=lessons_str,
-                points_toxicity=config.POINTS_TOXICITY,
-                points_snitching=config.POINTS_SNITCHING,
-                agreements_policy=(
-                    "Учитывай только подтверждённые договорённости."
-                    if config.ENABLE_AGREEMENTS else
-                    "Учёт договорённостей отключён; не начисляй за них очки."
-                ),
+                lessons_str=lessons_str
             )
         except Exception as e:
             logger.error(f"Error formatting system prompt: {e}")
@@ -158,7 +150,7 @@ class PromptService:
             
         if active_agreements:
             res += f"\n\n<active_agreements>\n{active_agreements}\n</active_agreements>"
-        return with_friendly_policy(res)
+        return res
 
     @classmethod
     def format_cynical_comment_prompt(
@@ -204,7 +196,7 @@ class PromptService:
                 lessons_str = "\n<learned_lessons>\n" + "\n".join(f"{i}. {l}" for i, l in enumerate(clean_lessons, 1)) + "\n</learned_lessons>\n"
                 res += f"\n{lessons_str}"
 
-        return with_friendly_policy(res)
+        return res
 
     @classmethod
     def format_report_validation_prompt(
@@ -245,11 +237,11 @@ class PromptService:
                 lessons_str = "\n<learned_lessons>\n" + "\n".join(f"{i}. {l}" for i, l in enumerate(clean_lessons, 1)) + "\n</learned_lessons>\n"
                 res += f"\n{lessons_str}"
 
-        return with_friendly_policy(res)
+        return res
 
     @classmethod
     def format_memory_summarization_prompt(cls) -> str:
-        return with_friendly_policy(cls.get_template("memory_summarization_prompt"))
+        return cls.get_template("memory_summarization_prompt")
 
     @classmethod
     def format_fact_validation_prompt(cls) -> str:
@@ -257,7 +249,7 @@ class PromptService:
 
     @classmethod
     def format_feedback_analysis_prompt(cls) -> str:
-        return with_friendly_policy(cls.get_template("feedback_analysis_prompt"))
+        return cls.get_template("feedback_analysis_prompt")
 
     @classmethod
     def format_scheduled_thought_prompt(
@@ -268,15 +260,14 @@ class PromptService:
     ) -> str:
         template = cls.get_template("scheduled_thought_prompt")
         try:
-            result = SafeTemplate(template).safe_substitute(
+            return SafeTemplate(template).safe_substitute(
                 lore_json=lore_json,
                 recent_thoughts=recent_thoughts,
                 suggested_theme=suggested_theme
             )
         except Exception as e:
             logger.error(f"Error formatting scheduled_thought_prompt: {e}")
-            result = template
-        return with_friendly_policy(result)
+            return template
 
     @classmethod
     def format_voice_digest_prompt(
@@ -299,7 +290,7 @@ class PromptService:
         
         template = cls.get_template("voice_digest_prompt")
         try:
-            result = SafeTemplate(template).safe_substitute(
+            return SafeTemplate(template).safe_substitute(
                 edition_type=edition_type,
                 lore_json=lore_json,
                 active_agreements=active_agreements,
@@ -307,5 +298,4 @@ class PromptService:
                 current_context=current_context
             )
         except Exception:
-            result = template
-        return with_friendly_policy(result)
+            return template

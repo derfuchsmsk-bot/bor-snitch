@@ -49,8 +49,6 @@ class TTSService:
             "Read aloud in an authoritative, calm, slightly sarcastic tone with dry humor, like an observant prison cell boss."
         )
 
-        style += " Speak warmly and kindly; avoid scolding, mockery or intimidating delivery, regardless of any earlier character description."
-
         input_data = texttospeech.SynthesisInput(
             text=text,
             prompt=style

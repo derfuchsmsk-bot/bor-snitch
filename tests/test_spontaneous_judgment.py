@@ -55,7 +55,6 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
 
     @patch("src.services.chat_service.db")
     @patch("src.services.chat_service.ai")
-    @patch.object(config, "ALLOW_SPONTANEOUS_PENALTIES", True)
     async def test_process_cynical_comment_spontaneous_penalty(self, mock_ai, mock_db):
         mock_msg = MagicMock()
         mock_msg.chat.id = -100123
@@ -92,7 +91,7 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(reply)
         self.assertIn("Классика: на словах готов рвать", reply)
-        self.assertIn("Разбор ситуации: +50 pts @ioann_thegreat", reply)
+        self.assertIn("Вердикт Смотрящего: +50 pts @ioann_thegreat", reply)
         self.assertIn("Слив с договоренности (масть)", reply)
 
         # Verify point event was applied
@@ -107,7 +106,6 @@ class TestSpontaneousJudgment(unittest.IsolatedAsyncioTestCase):
 
     @patch("src.services.chat_service.db")
     @patch("src.services.chat_service.ai")
-    @patch.object(config, "ALLOW_SPONTANEOUS_PENALTIES", True)
     async def test_process_cynical_comment_deduplicates_if_already_scored(self, mock_ai, mock_db):
         mock_msg = MagicMock()
         mock_msg.chat.id = -100123

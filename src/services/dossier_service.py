@@ -57,7 +57,7 @@ class DossierService:
             topics = ", ".join(d.favorite_topics) if d.favorite_topics else "любые"
             lines.append(
                 f"- @{name.lstrip('@')}: стиль='{d.communication_style}'. "
-                f"В переписке встречался взаимный юмор с: [{friends}]. "
-                f"Любимые темы: [{topics}]. {d.summary} Это наблюдения, а не согласие на подколы."
+                f"Взаимный стеб (roasting) разрешен с: [{friends}]. "
+                f"Любимые темы: [{topics}]. {d.summary}"
             )
         return "\n".join(lines)
