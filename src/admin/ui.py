@@ -2664,10 +2664,12 @@ def get_admin_html() -> str:
     // --- TAB: DEBTS & BALANCES ---
     async function loadDebts() {
       if (!state.currentChatId) return;
+      const chatId = state.currentChatId;
       const tbody = document.getElementById('debts-table-body');
       if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-500">Загрузка долговой книги...</td></tr>';
       try {
-        const data = await apiRequest(`/api/admin/chats/${state.currentChatId}/debts`);
+        const data = await apiRequest(`/api/admin/chats/${chatId}/debts`);
+        if (state.currentChatId !== chatId) return;
         state.debts = data.items || [];
 
         // Update stats
@@ -2678,17 +2680,18 @@ def get_admin_html() -> str:
         if (elAmount) elAmount.innerText = `${(data.total_debt_amount || 0).toLocaleString('ru-RU')} ₽`;
 
         const elTopDebtor = document.getElementById('debts-stat-top-debtor');
-        if (elTopDebtor) elTopDebtor.innerText = data.top_debtor ? escapeHtml(data.top_debtor) : '—';
+        if (elTopDebtor) elTopDebtor.innerText = data.top_debtor ? data.top_debtor : '—';
         const elTopDebtorPts = document.getElementById('debts-stat-top-debtor-pts');
         if (elTopDebtorPts) elTopDebtorPts.innerText = data.top_debtor ? `${(data.top_debtor_amount || 0).toLocaleString('ru-RU')} ₽ долга` : '0 ₽ долга';
 
         const elTopCreditor = document.getElementById('debts-stat-top-creditor');
-        if (elTopCreditor) elTopCreditor.innerText = data.top_creditor ? escapeHtml(data.top_creditor) : '—';
+        if (elTopCreditor) elTopCreditor.innerText = data.top_creditor ? data.top_creditor : '—';
         const elTopCreditorPts = document.getElementById('debts-stat-top-creditor-pts');
         if (elTopCreditorPts) elTopCreditorPts.innerText = data.top_creditor ? `${(data.top_creditor_amount || 0).toLocaleString('ru-RU')} ₽ к возврату` : '0 ₽ к возврату';
 
         renderDebtsTable(state.debts);
       } catch (err) {
+        if (state.currentChatId !== chatId) return;
         if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-rose-400">Ошибка: ${escapeHtml(err.message)}</td></tr>`;
       }
     }
@@ -2710,7 +2713,7 @@ def get_admin_html() -> str:
         return;
       }
 
-      tbody.innerHTML = items.map(d => {
+      tbody.innerHTML = items.map((d, index) => {
         const debtorEsc = escapeHtml(d.debtor);
         const creditorEsc = escapeHtml(d.creditor);
         const amount = d.amount || 0;
@@ -2732,15 +2735,15 @@ def get_admin_html() -> str:
             </td>
             <td class="py-3 px-4 text-right whitespace-nowrap">
               <div class="flex items-center justify-end gap-1.5">
-                <button onclick="openSettleDebtModal('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}', ${amount})"
+                <button data-debt-action="settle" data-debt-index="${index}"
                         class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-semibold transition flex items-center gap-1">
                   <span>✅</span> <span>Погасить</span>
                 </button>
-                <button onclick="openEditDebtModal('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}', ${amount})"
+                <button data-debt-action="edit" data-debt-index="${index}"
                         class="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs transition">
                   ✏️
                 </button>
-                <button onclick="deleteDebtPair('${escapeHtml(d.debtor)}', '${escapeHtml(d.creditor)}')"
+                <button data-debt-action="delete" data-debt-index="${index}"
                         class="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs transition" title="Списать без оплаты">
                   🗑
                 </button>
@@ -2749,10 +2752,21 @@ def get_admin_html() -> str:
           </tr>
         `;
       }).join('');
+      tbody.querySelectorAll('[data-debt-action]').forEach(button => {
+        button.addEventListener('click', () => {
+          const debt = items[Number(button.dataset.debtIndex)];
+          if (button.dataset.debtAction === 'settle') openSettleDebtModal(debt.debtor, debt.creditor, debt.amount);
+          if (button.dataset.debtAction === 'edit') openEditDebtModal(debt.debtor, debt.creditor, debt.amount);
+          if (button.dataset.debtAction === 'delete') deleteDebtPair(debt.debtor, debt.creditor);
+        });
+      });
     }
 
     function openAddDebtModal() {
+      document.getElementById('modal-debt-edit').dataset.chatId = String(state.currentChatId);
       document.getElementById('modal-debt-title').innerHTML = '<span>➕</span> <span>Записать новый долг</span>';
+      document.getElementById('modal-debt-debtor').readOnly = false;
+      document.getElementById('modal-debt-creditor').readOnly = false;
       document.getElementById('modal-debt-debtor').value = '';
       document.getElementById('modal-debt-creditor').value = '';
       document.getElementById('modal-debt-amount').value = '';
@@ -2761,7 +2775,10 @@ def get_admin_html() -> str:
     }
 
     function openEditDebtModal(debtor, creditor, amount) {
+      document.getElementById('modal-debt-edit').dataset.chatId = String(state.currentChatId);
       document.getElementById('modal-debt-title').innerHTML = '<span>✏️</span> <span>Изменить долг</span>';
+      document.getElementById('modal-debt-debtor').readOnly = true;
+      document.getElementById('modal-debt-creditor').readOnly = true;
       document.getElementById('modal-debt-debtor').value = debtor;
       document.getElementById('modal-debt-creditor').value = creditor;
       document.getElementById('modal-debt-amount').value = amount;
@@ -2769,13 +2786,38 @@ def get_admin_html() -> str:
       openModal('modal-debt-edit');
     }
 
+    let debtMutationPending = false;
+    let debtMutationRetry = null;
+    async function saveDebtMutation(path, payload) {
+      const signature = JSON.stringify([path, payload]);
+      if (!debtMutationRetry || debtMutationRetry.signature !== signature) {
+        debtMutationRetry = { signature, requestId: crypto.randomUUID() };
+      }
+      debtMutationPending = true;
+      try {
+        await apiRequest(path, {
+          method: 'POST',
+          body: JSON.stringify({ ...payload, request_id: debtMutationRetry.requestId })
+        });
+        debtMutationRetry = null;
+      } finally {
+        debtMutationPending = false;
+      }
+    }
+
     async function submitSaveDebt() {
+      if (debtMutationPending) return;
+      const chatId = document.getElementById('modal-debt-edit').dataset.chatId;
+      if (chatId !== String(state.currentChatId)) {
+        showToast('Чат изменился. Откройте форму заново.', 'error');
+        return;
+      }
       const debtor = document.getElementById('modal-debt-debtor').value.trim();
       const creditor = document.getElementById('modal-debt-creditor').value.trim();
-      const amount = parseInt(document.getElementById('modal-debt-amount').value, 10);
+      const amount = Number(document.getElementById('modal-debt-amount').value);
       const isDelta = document.getElementById('modal-debt-is-delta').checked;
 
-      if (!debtor || !creditor || isNaN(amount) || amount <= 0) {
+      if (!debtor || !creditor || !Number.isSafeInteger(amount) || amount <= 0 || amount > 10000000) {
         showToast('Заполните имена должника, кредитора и положительную сумму', 'error');
         return;
       }
@@ -2785,14 +2827,8 @@ def get_admin_html() -> str:
       }
 
       try {
-        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts`, {
-          method: 'POST',
-          body: JSON.stringify({
-            debtor: debtor,
-            creditor: creditor,
-            amount: amount,
-            is_delta: isDelta
-          })
+        await saveDebtMutation(`/api/admin/chats/${chatId}/debts`, {
+          debtor, creditor, amount, is_delta: isDelta
         });
         closeModal('modal-debt-edit');
         showToast('Долг успешно зафиксирован!');
@@ -2803,6 +2839,7 @@ def get_admin_html() -> str:
     }
 
     function openSettleDebtModal(debtor, creditor, currentAmount) {
+      document.getElementById('modal-debt-settle').dataset.chatId = String(state.currentChatId);
       document.getElementById('modal-settle-debtor').value = debtor;
       document.getElementById('modal-settle-creditor').value = creditor;
       document.getElementById('modal-settle-debtor-display').innerText = debtor;
@@ -2813,23 +2850,24 @@ def get_admin_html() -> str:
     }
 
     async function submitSettleDebt() {
+      if (debtMutationPending) return;
+      const chatId = document.getElementById('modal-debt-settle').dataset.chatId;
+      if (chatId !== String(state.currentChatId)) {
+        showToast('Чат изменился. Откройте форму заново.', 'error');
+        return;
+      }
       const debtor = document.getElementById('modal-settle-debtor').value;
       const creditor = document.getElementById('modal-settle-creditor').value;
-      const amount = parseInt(document.getElementById('modal-settle-amount').value, 10);
+      const amount = Number(document.getElementById('modal-settle-amount').value);
 
-      if (isNaN(amount) || amount <= 0) {
+      if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 10000000) {
         showToast('Укажите сумму возврата', 'error');
         return;
       }
 
       try {
-        await apiRequest(`/api/admin/chats/${state.currentChatId}/debts/settle`, {
-          method: 'POST',
-          body: JSON.stringify({
-            debtor: debtor,
-            creditor: creditor,
-            amount: amount
-          })
+        await saveDebtMutation(`/api/admin/chats/${chatId}/debts/settle`, {
+          debtor, creditor, amount
         });
         closeModal('modal-debt-settle');
         showToast(`Погашение на сумму ${amount} ₽ успешно зафиксировано!`);

@@ -18,6 +18,7 @@ from src.services.analysis_service import AnalysisService
 from src.services.lore_service import LoreService
 from src.services.config_service import ConfigService
 from src.services.prompt_service import PromptService
+from src.repositories.debt_repository import debt_repository
 from src.admin.router import router as admin_router
 from src.utils import messages
 
@@ -282,6 +283,10 @@ async def on_startup():
     # Load dynamic configurations and prompts from Firestore
     await ConfigService.load_config()
     await PromptService.load_prompts()
+
+    # Prepare the legacy baseline even if debts are enabled later via the CMS.
+    async for chat_doc in db.collection("chats").stream():
+        await debt_repository.initialize_journal(chat_doc.id)
 
     # Synchronize bot commands
     await sync_bot_commands()

@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+import logging
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import List, Optional
 
 class NewAgreement(BaseModel):
@@ -31,11 +32,26 @@ class Offender(BaseModel):
 class DebtTransaction(BaseModel):
     debtor: str = Field(description="Кто должен деньги (username или имя, без @).")
     creditor: str = Field(description="Кому должны (username или имя, без @)")
-    amount: int = Field(description="Сумма долга (в числах, например 500)")
-    reason: str = Field(description="За что долг (например: за шаурму, за такси, скинулись на ДР)")
-    is_settled: bool = Field(default=False, description="True если это сообщение о ВОЗВРАТЕ долга")
+    amount: int = Field(strict=True, gt=0, le=10000000, description="Сумма долга в целых рублях")
+    reason: str = Field(default="", description="За что долг")
+    source_message_id: Optional[str] = Field(default=None, description="MsgID исходного сообщения о новой операции")
+    is_settled: bool = Field(default=False, strict=True, description="True если это сообщение о ВОЗВРАТЕ долга")
 
-class DailyAnalysisResult(BaseModel):
+
+class DebtExtractionResult(BaseModel):
+    @field_validator("debt_transactions", mode="before", check_fields=False)
+    @classmethod
+    def validate_debts(cls, value):
+        valid = []
+        for item in value if isinstance(value, list) else []:
+            try:
+                valid.append(DebtTransaction.model_validate(item))
+            except ValidationError:
+                logging.warning("Ignoring invalid AI debt transaction")
+        return valid
+
+
+class DailyAnalysisResult(DebtExtractionResult):
     thought_process: str = Field(description="Подробный разбор полетов и анализ ситуации перед вынесением вердикта")
     offenders: List[Offender] = Field(default_factory=list, description="Список нарушителей")
     new_agreements: List[NewAgreement] = Field(default_factory=list, description="Список новых договоренностей")
@@ -72,7 +88,7 @@ class FeedbackAnalysisResult(BaseModel):
     reasoning: str = Field(description="Обоснование оценки реакции")
     learned_rule: Optional[str] = Field(None, description="Сформулированное правило поведения, если нужно")
 
-class CynicalCommentResult(BaseModel):
+class CynicalCommentResult(DebtExtractionResult):
     comment: str = Field(description="Текст комментария (1-2 емких предложения)")
     award_points: bool = Field(default=False, description="Вынести ли официальный судебный вердикт прямо сейчас")
     target_username: Optional[str] = Field(None, description="Username или имя участника для начисления/снятия очков")

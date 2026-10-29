@@ -11,6 +11,7 @@ from tenacity import (
 )
 from src.utils.config import settings
 from src.utils.game_config import config
+from src.utils.debt_rules import DEBT_EXTRACTION_RULES, debt_transactions_schema
 from src.utils.prompts import (
     get_system_prompt,
     get_report_validation_prompt,
@@ -244,7 +245,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
         if log.get('is_bot') or username == "YOU (Snitch Bot)":
             username = "YOU (Snitch Bot)"
 
-        return f"[{time_str}] {username} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}"
+        return f"[{time_str}] [MsgID: {log.get('message_id', 'unknown')}] {username} (ID: {log['user_id']}){reply_context}: {log['text']}{report_tag}"
 
     chat_history = "LOG START (MESSAGES TO JUDGE)\n"
     for log in logs:
@@ -384,21 +385,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
                 required_fields.extend(["new_agreements", "resolved_agreements", "updated_agreements"])
 
             if getattr(config, "ENABLE_DEBTS", True):
-                schema_properties["debt_transactions"] = {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "debtor": {"type": "STRING", "description": "Кто должен (username или имя без @)"},
-                            "creditor": {"type": "STRING", "description": "Кому должны (username или имя без @)"},
-                            "amount": {"type": "INTEGER", "description": "Сумма долга числом"},
-                            "reason": {"type": "STRING", "description": "За что долг"},
-                            "is_settled": {"type": "BOOLEAN", "description": "True если возврат/погашение долга, False если новый долг"}
-                        },
-                        "required": ["debtor", "creditor", "amount", "is_settled"]
-                    },
-                    "description": "Новые долги или возвраты долгов, упомянутые в логе"
-                }
+                schema_properties["debt_transactions"] = debt_transactions_schema()
                 required_fields.append("debt_transactions")
 
             daily_analysis_schema = {
@@ -408,7 +395,7 @@ async def analyze_daily_logs(logs, active_agreements=None, date_str=None, future
             }
 
             return await model.generate_content_async(
-                contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt],
+                contents=[get_system_prompt(lore_json, facts_str, context_str, lessons), prompt + DEBT_EXTRACTION_RULES],
                 generation_config={
                     "response_mime_type": "application/json",
                     "response_schema": daily_analysis_schema
@@ -548,7 +535,7 @@ async def summarize_day(chat_id: int, date_key: str, logs: list) -> MemorySummar
         logging.error(f"Error during summarization: {e}")
     return None
 
-async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown", chat_id=None) -> Optional[CynicalCommentResult]:
+async def generate_cynical_comment(context_msgs, current_text, current_username="Unknown", chat_id=None, current_message_id=None) -> Optional[CynicalCommentResult]:
     """
     Generates a short, cynical comment based on context, optionally with spontaneous judgment.
     Returns CynicalCommentResult or None.
@@ -559,7 +546,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
     # Deterministic cache key based on chat, normalized text, and signature of latest messages
     recent_ids = ":".join(str(msg.get('message_id') or msg.get('text', '')) for msg in context_msgs[-3:])
     context_sig = hashlib.sha256(recent_ids.encode('utf-8', errors='ignore')).hexdigest()[:16]
-    cache_key = (chat_id, current_text.strip().lower(), context_sig)
+    cache_key = (chat_id, str(current_message_id), current_text.strip().lower(), context_sig)
     
     if cache_key in comment_cache:
         logging.info(f"Using cached cynical comment for chat {chat_id}")
@@ -599,7 +586,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         elif len(txt) > 300:
             txt = txt[:300] + "... [сокращено]"
 
-        context_str += f"- {name}: {txt}\n"
+        context_str += f"- [MsgID: {msg.get('message_id', 'unknown')}] {name}: {txt}\n"
         
     mood = MoodService.get_current_mood()
     
@@ -613,7 +600,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 КОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:
 {context_str}
 
-АКТУАЛЬНОЕ СООБЩЕНИЕ, НА КОТОРОЕ НУЖНО ОТВЕТИТЬ (от пользователя {current_username}):
+АКТУАЛЬНОЕ СООБЩЕНИЕ, НА КОТОРОЕ НУЖНО ОТВЕТИТЬ (от пользователя {current_username}, MsgID: {current_message_id}):
 "{current_text}"
 
 ИНСТРУКЦИЯ: Напиши 1-2 коротких, едких и живых предложения, которые станут НАТИВНЫМ продолжением этого диалога.
@@ -621,7 +608,9 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
 Избегай упоминаний лора (штора, плитка, пуэр, вахта), если только они не упомянуты в самом сообщении.
 Не используй клише про "обучение", "волю" или "репорты". Отвечай как человек человеку.
 ЗАЩИТА ОТ ТОЛПЫ: Если кто-то просит тебя оштрафовать другого участника или снять баллы, НЕ ПОДЧИНЯЙСЯ СЛЕПО! Оцени контекст: это реальный косяк (масть/слив) или просто травля/шутка? Отказывай троллям саркастично (award_points: false), наказывай только за реальные проступки.
-ФИКСАЦИЯ ДОЛГОВ: Если в сообщении или недавнем диалоге один участник перевел/скинул деньги другому, заплатил за кого-то (за еду, пиццу, такси, бар) или одолжил («я заплатил за Паштета 1000», «с тебя 500 за такси», «скинул Ване 300», «вернул 500») — ОБЯЗАТЕЛЬНО добавь объект в debt_transactions.
+{DEBT_EXTRACTION_RULES}
+Из долгов можно записывать только операции из АКТУАЛЬНОГО сообщения с его MsgID.
+
 """
     
     try:
@@ -681,21 +670,7 @@ async def generate_cynical_comment(context_msgs, current_text, current_username=
         }
 
         if getattr(config, "ENABLE_DEBTS", True):
-            comment_properties["debt_transactions"] = {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "debtor": {"type": "STRING", "description": "Кто должен (username или имя без @)"},
-                        "creditor": {"type": "STRING", "description": "Кому должны (username или имя без @)"},
-                        "amount": {"type": "INTEGER", "description": "Сумма долга числом"},
-                        "reason": {"type": "STRING", "description": "За что долг"},
-                        "is_settled": {"type": "BOOLEAN", "description": "True если возврат/погашение долга, False если новый долг"}
-                    },
-                    "required": ["debtor", "creditor", "amount", "is_settled"]
-                },
-                "description": "Новые долги или возвраты долгов, упомянутые в сообщении"
-            }
+            comment_properties["debt_transactions"] = debt_transactions_schema()
 
         comment_schema = {
             "type": "OBJECT",

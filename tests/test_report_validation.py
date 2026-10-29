@@ -26,11 +26,12 @@ class TestReportValidationEnhancements(unittest.IsolatedAsyncioTestCase):
         self.assertIn("навесик и фильм", formatted)
         self.assertIn("СЛИВ С ДОГОВОРЕННОСТЕЙ ИЛИ СОВМЕСТНЫХ ПЛАНОВ", formatted)
 
+    @patch("src.services.learning.LearningService.get_active_lessons", new_callable=AsyncMock, return_value=[])
     @patch("src.services.ai.GenerativeModel")
     @patch("src.services.ai.LoreService.get_lore")
     @patch("src.repositories.agreement_repository.agreement_repository.get_active_agreements")
     async def test_validate_report_fetches_lore_and_agreements(
-        self, mock_get_agreements, mock_get_lore, mock_model_cls
+        self, mock_get_agreements, mock_get_lore, mock_model_cls, mock_get_lessons
     ):
         mock_get_lore.return_value = {
             "core": {

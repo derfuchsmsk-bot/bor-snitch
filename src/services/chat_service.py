@@ -9,7 +9,7 @@ from ..services.dossier_service import DossierService
 from ..services.lore_service import LoreService
 from ..models.points import PointEvent
 from ..models.ai import CynicalCommentResult
-from src.repositories.debt_repository import debt_repository
+from src.services.debt_service import DebtService
 from ..utils.text import escape
 import logging
 
@@ -310,7 +310,8 @@ class ChatService:
                     context_msgs, 
                     comment_text, 
                     username, 
-                    chat_id=chat_id
+                    chat_id=chat_id,
+                    current_message_id=message.message_id,
                 )
                 
                 if not result:
@@ -324,31 +325,17 @@ class ChatService:
                 
                 # Debt tracking via spontaneous AI parsing
                 if getattr(config, "ENABLE_DEBTS", True) and isinstance(result, CynicalCommentResult) and result.debt_transactions:
-                    dt_dicts = [dt.model_dump() for dt in result.debt_transactions]
-                    for dt in dt_dicts:
-                        _, r_debtor = await cls.resolve_user(chat_id, dt.get('debtor', ''), context_msgs)
-                        if r_debtor:
-                            dt['debtor'] = r_debtor.lstrip('@')
-                        _, r_creditor = await cls.resolve_user(chat_id, dt.get('creditor', ''), context_msgs)
-                        if r_creditor:
-                            dt['creditor'] = r_creditor.lstrip('@')
-
-                    await debt_repository.update_debts(chat_id, dt_dicts)
-                    
-                    debt_text = "\n\n💸 <b>Кстати, я зафиксировал долги:</b>\n"
-                    for dt in dt_dicts:
-                        debtor = dt.get('debtor', 'Кто-то')
-                        creditor = dt.get('creditor', 'Кому-то')
-                        amount = dt.get('amount', 0)
-                        is_settled = dt.get('is_settled', False)
-                        reason = dt.get('reason', '')
-                        reason_str = f" ({escape(reason)})" if reason else ""
-                        if is_settled:
-                            debt_text += f"✅ {escape(debtor.capitalize())} вернул {amount} {escape(creditor.capitalize())}{reason_str}\n"
-                        else:
-                            debt_text += f"📉 {escape(debtor.capitalize())} торчит {amount} {escape(creditor.capitalize())}{reason_str}\n"
-                    
-                    comment_body += debt_text
+                    source = {
+                        "message_id": message.message_id,
+                        "timestamp": message.date,
+                        "user_id": user_id,
+                        "username": message.from_user.username,
+                        "first_name": message.from_user.first_name,
+                        "is_bot": bool(message.from_user.is_bot),
+                        "text": comment_text,
+                    }
+                    applied = await DebtService.apply(chat_id, result.debt_transactions, [source])
+                    comment_body += DebtService.format_updates(applied, "Кстати, я зафиксировал долги")
 
                 cls._last_comment_time[chat_id] = now
                 cls._last_user_comment_time[(chat_id, user_id)] = now

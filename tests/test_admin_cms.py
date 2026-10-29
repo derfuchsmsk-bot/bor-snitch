@@ -456,7 +456,9 @@ def test_admin_ui_contains_verdicts_tab():
     assert "submitAnnulVerdict" in resp.text
 
 
-def test_admin_debts_endpoints_and_ui():
+@patch("src.services.debt_service.DebtService.party_index", new_callable=AsyncMock, return_value={})
+@patch("src.admin.router.debt_repository.get_debts", new_callable=AsyncMock, return_value={})
+def test_admin_debts_endpoints_and_ui(mock_debts, mock_party_index):
     token = create_admin_token()
     headers = {"Authorization": f"Bearer {token}"}
     chat_id = settings.MAIN_CHAT_ID

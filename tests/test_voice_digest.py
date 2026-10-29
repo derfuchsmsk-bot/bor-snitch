@@ -61,7 +61,13 @@ async def test_voice_digest_creation_and_send():
          patch("src.services.voice_digest_service.message_repository.get_logs_for_time_range", new_callable=AsyncMock) as mock_logs, \
          patch("src.services.voice_digest_service.agreement_repository.get_active_agreements", new_callable=AsyncMock) as mock_ag, \
          patch("src.services.voice_digest_service.user_repository.get_points_ledger", new_callable=AsyncMock) as mock_ledger, \
-         patch("src.services.voice_digest_service.LoreService.get_lore_as_json", new_callable=AsyncMock) as mock_lore:
+         patch("src.services.voice_digest_service.LoreService.get_lore_as_json", new_callable=AsyncMock) as mock_lore, \
+         patch("src.services.voice_digest_service.db") as mock_db:
+
+        lock_ref = mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value
+        lock_ref.get = AsyncMock(return_value=MagicMock(exists=False))
+        lock_ref.set = AsyncMock()
+        lock_ref.delete = AsyncMock()
 
         mock_logs.return_value = [{"username": "user1", "text": "hello"}]
         mock_ag.return_value = []

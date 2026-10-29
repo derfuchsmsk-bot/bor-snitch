@@ -16,7 +16,7 @@ from src.services.db import (
 )
 from src.services.ai import analyze_daily_logs, summarize_day
 from src.services.learning import LearningService
-from src.repositories.debt_repository import debt_repository
+from src.services.debt_service import DebtService
 
 class AnalysisService:
     def __init__(self, bot: Bot):
@@ -105,8 +105,7 @@ class AnalysisService:
                 final_result["updated_agreements"].extend([upd.model_dump() for upd in ai_result.updated_agreements])
             
             if getattr(config, "ENABLE_DEBTS", True) and hasattr(ai_result, "debt_transactions") and ai_result.debt_transactions:
-                final_result["debt_transactions"].extend([dt.model_dump() for dt in ai_result.debt_transactions])
-                await debt_repository.update_debts(chat_id, final_result["debt_transactions"])
+                final_result["debt_transactions"] = await DebtService.apply(chat_id, ai_result.debt_transactions, logs)
             
             if ai_result.thought_process:
                 final_result["ai_thought_process"] = ai_result.thought_process
@@ -158,6 +157,7 @@ class AnalysisService:
                         text += f"   💬 <i>{escape(quote)}</i>\n"
                     text += "\n"
             
+            text += DebtService.format_updates(final_result["debt_transactions"])
             new_agreements = final_result.get('new_agreements', [])
             if new_agreements:
                 text += messages.NEW_AGREEMENTS_TITLE
@@ -286,20 +286,8 @@ class AnalysisService:
         text = ""
 
         if debt_transactions:
-            dt_dicts = [dt.model_dump() for dt in debt_transactions]
-            await debt_repository.update_debts(chat_id, dt_dicts)
-            
-            text += "\n💸 <b>Обновление по долгам:</b>\n"
-            for dt in dt_dicts:
-                debtor = dt.get('debtor', 'Кто-то')
-                creditor = dt.get('creditor', 'Кому-то')
-                amount = dt.get('amount', 0)
-                reason = dt.get('reason', '')
-                is_settled = dt.get('is_settled', False)
-                if is_settled:
-                    text += f"✅ {escape(debtor)} вернул {amount} {escape(creditor)} ({escape(reason)})\n"
-                else:
-                    text += f"📉 {escape(debtor)} торчит {amount} {escape(creditor)} ({escape(reason)})\n"
+            applied = await DebtService.apply(chat_id, debt_transactions, logs)
+            text += DebtService.format_updates(applied)
 
         if new_agreements:
             text += messages.NEW_AGREEMENTS_TITLE

@@ -2,7 +2,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Response, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from uuid import UUID
 
 from src.utils.config import settings
 from src.utils.game_config import config, DEFAULT_CONFIG_VALUES
@@ -16,7 +17,8 @@ from src.repositories.message_repository import message_repository
 from src.repositories.fact_repository import fact_repository
 from src.repositories.agreement_repository import agreement_repository
 from src.repositories.lesson_repository import lesson_repository
-from src.repositories.debt_repository import debt_repository
+from src.repositories.debt_repository import debt_repository, normalize_party, validate_pair
+from src.services.debt_service import DebtService
 from src.services.learning import LearningService
 from src.services.db import db, apply_weekly_amnesty
 from google.cloud import firestore
@@ -123,16 +125,22 @@ class AnnulVerdictRequest(BaseModel):
     learn_lesson: Optional[bool] = True
     custom_rule: Optional[str] = None
 
-class DebtCreateUpdateRequest(BaseModel):
+class DebtPartiesRequest(BaseModel):
     debtor: str = Field(..., min_length=1)
     creditor: str = Field(..., min_length=1)
-    amount: int = Field(..., ge=1, le=10000000)
+    request_id: Optional[UUID] = None
+
+    @field_validator("debtor", "creditor")
+    @classmethod
+    def normalize_name(cls, value):
+        return normalize_party(value)
+
+class DebtCreateUpdateRequest(DebtPartiesRequest):
+    amount: int = Field(..., strict=True, ge=1, le=10000000)
     is_delta: Optional[bool] = False
 
-class DebtSettleRequest(BaseModel):
-    debtor: str = Field(..., min_length=1)
-    creditor: str = Field(..., min_length=1)
-    amount: Optional[int] = None
+class DebtSettleRequest(DebtPartiesRequest):
+    amount: Optional[int] = Field(None, strict=True, ge=1, le=10000000)
 
 class AchievementsUpdateRequest(BaseModel):
     achievements: List[Any]
@@ -747,6 +755,18 @@ async def delete_agreement(chat_id: str, agreement_id: str, admin=Depends(get_cu
 
 # --- Debts Endpoints ---
 
+async def resolve_debt_parties(chat_id, debtor, creditor):
+    try:
+        debtor, creditor = validate_pair(debtor, creditor)
+        balances = await debt_repository.get_debts(chat_id)
+        # A displayed legacy pair may use an old alias. Editing it must address
+        # that exact pair rather than create another row under a resolved username.
+        if creditor in balances.get(debtor, {}):
+            return debtor, creditor
+        return await DebtService.resolve_manual_pair(chat_id, debtor, creditor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 @router.get("/api/admin/chats/{chat_id}/debts")
 async def get_chat_debts(chat_id: str, admin=Depends(get_current_admin)):
     try:
@@ -768,21 +788,18 @@ async def create_or_update_debt(chat_id: str, body: DebtCreateUpdateRequest, adm
     except ValueError:
         c_id = chat_id
 
-    debtor = body.debtor.strip().lstrip('@')
-    creditor = body.creditor.strip().lstrip('@')
+    debtor, creditor = await resolve_debt_parties(c_id, body.debtor, body.creditor)
 
-    if debtor.lower() == creditor.lower():
-        raise HTTPException(status_code=400, detail="Должник и кредитор не могут совпадать")
-
+    operation = {"operation_id": f"admin:create:{body.request_id}"} if body.request_id else {}
     if body.is_delta:
         await debt_repository.update_debts(c_id, [{
             "debtor": debtor,
             "creditor": creditor,
             "amount": body.amount,
             "is_settled": False
-        }])
+        }], **operation)
     else:
-        await debt_repository.set_debt(c_id, debtor, creditor, body.amount)
+        await debt_repository.set_debt(c_id, debtor, creditor, body.amount, **operation)
 
     summary = await debt_repository.get_debts_summary(c_id)
     return {
@@ -802,18 +819,22 @@ async def settle_debt(chat_id: str, body: DebtSettleRequest, admin=Depends(get_c
     except ValueError:
         c_id = chat_id
 
-    debtor = body.debtor.strip().lstrip('@')
-    creditor = body.creditor.strip().lstrip('@')
+    debtor, creditor = await resolve_debt_parties(c_id, body.debtor, body.creditor)
 
-    if body.amount is not None and body.amount > 0:
+    operation = {"operation_id": f"admin:settle:{body.request_id}"} if body.request_id else {}
+    if body.amount is not None:
         await debt_repository.update_debts(c_id, [{
             "debtor": debtor,
             "creditor": creditor,
             "amount": body.amount,
             "is_settled": True
-        }])
+        }], **operation)
     else:
-        await debt_repository.delete_debt(c_id, debtor, creditor)
+        if body.request_id:
+            await debt_repository.set_debt(c_id, debtor, creditor, 0,
+                operation_id=f"admin:settle:{body.request_id}")
+        else:
+            await debt_repository.delete_debt(c_id, debtor, creditor)
 
     summary = await debt_repository.get_debts_summary(c_id)
     return {
@@ -832,7 +853,11 @@ async def delete_debt_pair(chat_id: str, debtor: str, creditor: str, admin=Depen
     except ValueError:
         c_id = chat_id
 
-    await debt_repository.delete_debt(c_id, debtor, creditor)
+    debtor, creditor = await resolve_debt_parties(c_id, debtor, creditor)
+    try:
+        await debt_repository.delete_debt(c_id, debtor, creditor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     summary = await debt_repository.get_debts_summary(c_id)
     return {
         "status": "deleted",
